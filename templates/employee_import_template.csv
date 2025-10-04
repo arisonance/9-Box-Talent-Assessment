@@ -1,0 +1,5 @@
+employee_id,name,email,department,manager,title,performance,potential
+E001,Alex Johnson,alex.johnson@example.com,Engineering,Sara Lee,Senior Engineer,high,med
+E002,Bianca Patel,bianca.patel@example.com,Sales,Tom Wu,Account Executive,med,high
+E003,Carlos Reyes,carlos.reyes@example.com,Operations,Ana Kim,Analyst,low,low
+

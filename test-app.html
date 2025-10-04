@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test App</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .error { color: red; padding: 10px; background: #fee; border: 1px solid red; }
+        .success { color: green; padding: 10px; background: #efe; border: 1px solid green; }
+        .loading { color: blue; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function TestApp() {
+            const [status, setStatus] = React.useState('loading');
+            const [error, setError] = React.useState('');
+            
+            React.useEffect(() => {
+                // Test environment variables
+                const supabaseUrl = 'https://mnsofbbwcivcobbmfzbe.supabase.co';
+                const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uc29mYmJ3Y2l2Y29iYm1memJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI5NzEwOTAsImV4cCI6MjA2ODU0NzA5MH0.6u3n_7b2P4YxQnZ8DX16Sz097TKyxpo9-Agd1TQQ1Ig';
+                
+                if (!supabaseUrl || !supabaseKey) {
+                    setError('Environment variables not set');
+                    setStatus('error');
+                    return;
+                }
+                
+                // Test Supabase connection
+                fetch(supabaseUrl + '/rest/v1/', {
+                    headers: {
+                        'apikey': supabaseKey,
+                        'Authorization': 'Bearer ' + supabaseKey
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        setStatus('success');
+                    } else {
+                        setError('Supabase connection failed: ' + response.status);
+                        setStatus('error');
+                    }
+                })
+                .catch(err => {
+                    setError('Network error: ' + err.message);
+                    setStatus('error');
+                });
+            }, []);
+
+            return (
+                <div className="container">
+                    <h1>9-Box Talent Assessment - Connection Test</h1>
+                    
+                    {status === 'loading' && (
+                        <div className="loading">Testing connection...</div>
+                    )}
+                    
+                    {status === 'error' && (
+                        <div className="error">
+                            <h3>Connection Error</h3>
+                            <p>{error}</p>
+                        </div>
+                    )}
+                    
+                    {status === 'success' && (
+                        <div className="success">
+                            <h3>✅ Connection Successful!</h3>
+                            <p>Supabase is connected and ready.</p>
+                            <p>You can now proceed to set up the database schema.</p>
+                            <p><a href="http://localhost:5173" target="_blank">Try the main app →</a></p>
+                        </div>
+                    )}
+                    
+                    <hr style={{margin: '20px 0'}} />
+                    
+                    <h3>Next Steps:</h3>
+                    <ol>
+                        <li>Run the database schema in Supabase SQL Editor</li>
+                        <li>Visit the main app at <a href="http://localhost:5173">localhost:5173</a></li>
+                        <li>Create an account and test the features</li>
+                    </ol>
+                    
+                    <h3>Environment Check:</h3>
+                    <ul>
+                        <li>Supabase URL: ✅ Set</li>
+                        <li>Supabase Key: ✅ Set</li>
+                        <li>Connection: {status}</li>
+                    </ul>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<TestApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>

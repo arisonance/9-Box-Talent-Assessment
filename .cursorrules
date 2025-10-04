@@ -1,0 +1,182 @@
+# 9-Box Talent Assessment - Cursor Rules
+
+## 🚀 Development Server Rules
+
+### Starting the Dev Server
+When starting the development server, ALWAYS:
+1. Run `npm run dev` directly (the shared config sets host, port, and auto-open).
+2. Wait for Vite to print the `Local:` URL in the terminal output.
+3. Confirm the browser tab/window opened at `http://127.0.0.1:5173/`.
+4. If no browser opens, stop the process and restart with the fallback command below.
+
+```bash
+# Preferred startup (auto launches your default browser)
+npm run dev
+
+# Fallback if the browser didn't open automatically
+npm run dev -- --open --host 127.0.0.1 --port 5173
+```
+
+### Port Configuration
+- Default dev port is 5173 (defined in `vite.config.ts` with a safe fallback).
+- Prefer leaving the port alone; if you must override, export `PORT=5173` (or another free value) before `npm run dev`.
+- Avoid reintroducing ad-hoc port-specific scripts (like forcing 3000)—auto-open relies on the shared Vite config.
+
+### Browser Opening
+When the user says "the app won't open" or "browser isn't opening":
+1. Check the terminal for the `Local: http://127.0.0.1:5173/` log—if it appears, the server is ready.
+2. If the browser didn't launch, rerun the fallback command (`npm run dev -- --open --host 127.0.0.1 --port 5173`).
+3. Provide the direct URL for manual opening: http://127.0.0.1:5173/
+4. Only debug the app itself after confirming the auto-open step is working.
+
+## 📁 File Structure Rules
+
+### Component Organization
+- Unified components MUST go in `src/components/unified/`
+- Never create duplicate components - use the unified system
+- All new employee displays MUST use `EmployeeCardUnified` with appropriate variant
+
+### Import Rules
+- **CRITICAL**: React hooks ONLY from 'react' package
+- Icons from 'lucide-react' only
+- Unified components: `import { ComponentName } from './unified'`
+- Never import useState, useEffect, etc. from @supabase/supabase-js
+
+### File Naming
+- Component files: PascalCase (e.g., EmployeeCard.tsx)
+- Utility files: camelCase (e.g., reviewAnalyzer.ts)
+- Unified components: [ComponentName]Unified.tsx or descriptive name
+
+## 🎨 Design System Rules
+
+### Badge Usage
+ALWAYS use the unified badge system from `src/components/unified/BadgeSystem.tsx`:
+```typescript
+import { PerformanceBadge, PotentialBadge, DepartmentBadge } from './unified';
+```
+- Never create inline badge styling
+- Use consistent sizes: sm, md, lg
+- Always use rounded-full for badges
+
+### Navigation Tabs
+ALL tabbed interfaces MUST use NavigationTabs:
+```typescript
+import { NavigationTabs } from './unified';
+
+const tabs = [
+  { id: 'view1', label: 'View 1', icon: IconName },
+  { id: 'view2', label: 'View 2', icon: IconName },
+];
+
+<NavigationTabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+```
+
+### Employee Card Variants
+- **grid**: Default, detailed view with actions (9-box cells, cards in boxes)
+- **list**: Row layout for list views (People dashboard, search results)
+- **compact**: Minimal view with small avatar (modals, tight spaces)
+
+Example:
+```typescript
+<EmployeeCardUnified variant="list" employee={emp} department={dept} />
+```
+
+### Modal Patterns
+All new modals SHOULD use ModalLayout:
+```typescript
+<ModalLayout
+  isOpen={isOpen}
+  onClose={onClose}
+  title="Modal Title"
+  footer={<button>Action</button>}
+>
+  {content}
+</ModalLayout>
+```
+
+## 🐛 Common Issues & Fixes
+
+### Issue: "Duplicate style attribute in JSX"
+**Fix**: Never put style prop twice on same element
+```typescript
+// ❌ WRONG
+<div style={style1} style={style2}>
+
+// ✅ CORRECT
+<div style={{ ...style1, ...style2 }}>
+```
+
+### Issue: "Cannot find module React"
+**Fix**: Import React correctly
+```typescript
+// ✅ CORRECT
+import { useState, useEffect } from 'react';
+
+// ❌ WRONG - Never do this
+import { useState } from '@supabase/supabase-js';
+```
+
+### Issue: App won't load in browser
+**Diagnosis**:
+1. Check if the server is actually running: `curl http://127.0.0.1:5173/`
+2. If the server responds with HTML, it's a browser opening issue, not a server issue
+3. Provide the manual URL: http://127.0.0.1:5173/
+
+**Fix**: Restart with the fallback command that forces `--open --host 127.0.0.1 --port 5173`
+
+### Issue: TypeScript errors about types
+**Fix**: Check imports and type definitions
+- Employee, Department types from '../types'
+- Use proper type annotations
+- Don't use 'any' unless absolutely necessary
+
+## ✅ Code Quality Standards
+
+### Before Committing Changes
+1. ✅ All imports are correct (React from 'react', not other packages)
+2. ✅ No duplicate style attributes
+3. ✅ All referenced files exist
+4. ✅ Dev server config in `vite.config.ts` still targets host `127.0.0.1` and port `5173`
+5. ✅ Browser opens automatically after dev server starts
+6. ✅ Using unified components where applicable
+
+### Testing Checklist
+Before saying "done", verify:
+- [ ] Dev server starts on port 5173 (or the configured `PORT`)
+- [ ] Browser opens automatically to http://127.0.0.1:5173/
+- [ ] App loads without console errors
+- [ ] All views are accessible (9-Box, People, Development, Feedback, Admin)
+- [ ] Employee cards display consistently across all views
+- [ ] Navigation tabs work in all dashboards
+
+## 🔄 Workflow Rules
+
+### Starting Work on This Project
+1. Check current branch
+2. Kill existing processes: `pkill -9 -f "vite"`
+3. Start dev server with browser opening
+4. Verify app loads before making changes
+
+### Making Component Changes
+1. Check if unified component exists first
+2. Use existing unified components rather than creating new ones
+3. Follow the established patterns in unified/
+4. Test in multiple views to ensure consistency
+
+### Adding New Features
+1. Check if it needs a new unified component
+2. Use established design tokens (colors, spacing, etc.)
+3. Follow existing badge/tab/card patterns
+4. Update this rules file if adding new patterns
+
+## 🎯 Success Criteria
+
+You've done your job correctly when:
+1. ✅ Dev server starts cleanly on port 5173 (or the configured `PORT` override)
+2. ✅ Browser opens automatically to http://127.0.0.1:5173/ showing the app
+3. ✅ No TypeScript compilation errors
+4. ✅ No React import errors
+5. ✅ UI is consistent across all views
+6. ✅ All unified components are used properly
+
+Remember: "App won't open" usually means browser opening failed, NOT that the server is broken!

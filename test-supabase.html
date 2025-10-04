@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Supabase Connection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Testing Supabase Connection</h1>
+    <div id="results"></div>
+    
+    <script>
+        const supabaseUrl = 'https://mnsofbbwcivcobbmfzbe.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uc29mYmJ3Y2l2Y29iYm1memJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI5NzEwOTAsImV4cCI6MjA2ODU0NzA5MH0.6u3n_7b2P4YxQnZ8DX16Sz097TKyxpo9-Agd1TQQ1Ig';
+        
+        const { createClient } = supabase;
+        const client = createClient(supabaseUrl, supabaseKey);
+        
+        async function testConnection() {
+            const results = document.getElementById('results');
+            
+            try {
+                // Test 1: Get all organizations
+                const { data: orgs, error: orgError } = await client
+                    .from('organizations')
+                    .select('*');
+                
+                results.innerHTML += '<h2>Organizations:</h2>';
+                results.innerHTML += '<pre>' + JSON.stringify(orgs, null, 2) + '</pre>';
+                
+                if (orgError) {
+                    results.innerHTML += '<p style="color: red;">Error: ' + orgError.message + '</p>';
+                }
+                
+                // Test 2: Get specific organization
+                const { data: specificOrg, error: specificError } = await client
+                    .from('organizations')
+                    .select('*')
+                    .eq('id', 'f8a8b8c8-d8e8-4f8f-8f8f-8f8f8f8f8f8f');
+                
+                results.innerHTML += '<h2>Specific Org Query:</h2>';
+                results.innerHTML += '<pre>' + JSON.stringify(specificOrg, null, 2) + '</pre>';
+                
+                if (specificError) {
+                    results.innerHTML += '<p style="color: red;">Error: ' + specificError.message + '</p>';
+                }
+                
+                // Test 3: Count employees
+                const { count, error: countError } = await client
+                    .from('employees')
+                    .select('*', { count: 'exact', head: true });
+                
+                results.innerHTML += '<h2>Employee Count: ' + count + '</h2>';
+                
+            } catch (error) {
+                results.innerHTML += '<p style="color: red;">Connection Error: ' + error.message + '</p>';
+            }
+        }
+        
+        testConnection();
+    </script>
+</body>
+</html>

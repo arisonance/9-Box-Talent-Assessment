@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Auth</title>
+</head>
+<body>
+    <h1>Simple Auth Test</h1>
+    <div>
+        <input type="email" id="email" placeholder="Email" value="test@example.com">
+        <input type="password" id="password" placeholder="Password" value="test123">
+        <button onclick="testSignUp()">Sign Up</button>
+        <button onclick="testSignIn()">Sign In</button>
+    </div>
+    <div id="result"></div>
+
+    <script type="module">
+        import { createClient } from '@supabase/supabase-js';
+
+        // Get from .env file
+        const supabaseUrl = 'https://nvjxhuhqgbmfrcjvdqhe.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52anhocWhxZ2JtZnJjanZkcWhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzM4Njc2NjUsImV4cCI6MjA0OTQ0MzY2NX0.7MlNe-BfGSoZnfQoSn4CKr7RONjCFHaHwbQEbNjGBHI';
+        
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        window.testSignUp = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const result = document.getElementById('result');
+            
+            try {
+                const { data, error } = await supabase.auth.signUp({
+                    email: email,
+                    password: password
+                });
+                
+                if (error) {
+                    result.innerHTML = `<p style="color: red">Sign Up Error: ${error.message}</p>`;
+                } else {
+                    result.innerHTML = `<p style="color: green">Sign Up Success! User: ${data.user?.email}</p>`;
+                }
+            } catch (e) {
+                result.innerHTML = `<p style="color: red">Exception: ${e.message}</p>`;
+            }
+        };
+
+        window.testSignIn = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const result = document.getElementById('result');
+            
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+                
+                if (error) {
+                    result.innerHTML = `<p style="color: red">Sign In Error: ${error.message}</p>`;
+                } else {
+                    result.innerHTML = `<p style="color: green">Sign In Success! User: ${data.user?.email}</p>`;
+                }
+            } catch (e) {
+                result.innerHTML = `<p style="color: red">Exception: ${e.message}</p>`;
+            }
+        };
+
+        // Test connection on load
+        window.addEventListener('load', async () => {
+            const result = document.getElementById('result');
+            try {
+                const { data } = await supabase.auth.getSession();
+                result.innerHTML = `<p>Connection test: ${data.session ? 'Logged in as ' + data.session.user.email : 'Not logged in'}</p>`;
+            } catch (e) {
+                result.innerHTML = `<p style="color: red">Connection failed: ${e.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

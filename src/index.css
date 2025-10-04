@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/* Reset and normalize */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Design System: Spacing Scale (4-8pt system) */
+:root {
+  --space-1: 0.25rem;  /* 4px */
+  --space-2: 0.5rem;   /* 8px */
+  --space-3: 0.75rem;  /* 12px */
+  --space-4: 1rem;     /* 16px */
+  --space-6: 1.5rem;   /* 24px */
+  --space-8: 2rem;     /* 32px */
+  --space-12: 3rem;    /* 48px */
+
+  /* Typography Scale (3 sizes max) */
+  --text-xs: 0.75rem;      /* 12px - tertiary text */
+  --text-sm: 0.875rem;     /* 14px - body text */
+  --text-base: 1rem;       /* 16px - primary text */
+  --text-lg: 1.125rem;     /* 18px - headings */
+  --text-xl: 1.25rem;      /* 20px - page titles */
+
+  /* Color Palette (limited) */
+  --color-primary: #2563eb;      /* blue-600 */
+  --color-primary-hover: #1d4ed8; /* blue-700 */
+  --color-primary-light: #dbeafe; /* blue-100 */
+
+  --color-success: #16a34a;      /* green-600 */
+  --color-success-light: #dcfce7; /* green-100 */
+
+  --color-warning: #ea580c;      /* orange-600 */
+  --color-warning-light: #fed7aa; /* orange-200 */
+
+  --color-danger: #dc2626;       /* red-600 */
+  --color-danger-light: #fecaca; /* red-200 */
+
+  --color-neutral-50: #f9fafb;
+  --color-neutral-100: #f3f4f6;
+  --color-neutral-200: #e5e7eb;
+  --color-neutral-400: #9ca3af;
+  --color-neutral-600: #4b5563;
+  --color-neutral-700: #374151;
+  --color-neutral-900: #111827;
+}
+
+/* Button Hierarchy */
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg
+         hover:bg-blue-700 transition-colors shadow-sm;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg
+         border border-gray-300 hover:bg-gray-50 transition-colors;
+}
+
+.btn-tertiary {
+  @apply px-3 py-1.5 text-gray-600 text-sm hover:text-gray-900
+         hover:bg-gray-100 rounded transition-colors;
+}
+
+.btn-icon {
+  @apply p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100
+         rounded transition-colors;
+}
+
+/* Skeleton Loader */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton-text {
+  height: 1rem;
+  background: linear-gradient(
+    90deg,
+    #f3f4f6 0px,
+    #f9fafb 40px,
+    #f3f4f6 80px
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+  border-radius: 0.25rem;
+}
+
+.skeleton-box {
+  background: linear-gradient(
+    90deg,
+    #f3f4f6 0px,
+    #f9fafb 40px,
+    #f3f4f6 80px
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+  border-radius: 0.5rem;
+}

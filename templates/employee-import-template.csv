@@ -1,0 +1,11 @@
+employee_id,name,email,department,manager,title,location,performance,potential
+EMP001,Jane Smith,jane.smith@company.com,Engineering,John Doe,Senior Engineer,New York,high,high
+EMP002,Bob Johnson,bob.johnson@company.com,Engineering,John Doe,Engineer,New York,medium,high
+EMP003,Alice Brown,alice.brown@company.com,Sales,Sarah Wilson,Sales Manager,San Francisco,high,medium
+EMP004,Charlie Davis,charlie.davis@company.com,Sales,Sarah Wilson,Sales Rep,San Francisco,medium,medium
+EMP005,Emma Wilson,emma.wilson@company.com,Marketing,Mike Chen,Marketing Specialist,Remote,low,high
+EMP006,David Miller,david.miller@company.com,Marketing,Mike Chen,Content Creator,Remote,medium,low
+EMP007,Sarah Anderson,sarah.anderson@company.com,Product,Lisa Wang,Product Manager,New York,high,high
+EMP008,Tom Martinez,tom.martinez@company.com,Product,Lisa Wang,Product Designer,New York,medium,medium
+EMP009,Lisa Thomas,lisa.thomas@company.com,Engineering,John Doe,Junior Engineer,San Francisco,low,medium
+EMP010,Michael Garcia,michael.garcia@company.com,Sales,Sarah Wilson,Account Executive,Remote,high,low
