@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Send, Plus, Trash2, Edit2, Check, Mail, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Employee } from '../types';
+import { useToast } from './unified';
 import {
   QUESTION_LIBRARY,
   DEFAULT_QUESTION_IDS,
@@ -36,6 +37,7 @@ export default function Quick360Modal({
   organizationId,
   onSurveyCreated
 }: Quick360ModalProps) {
+  const { notify } = useToast();
   const [selectedQuestions, setSelectedQuestions] = useState<Question[]>([]);
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
   const [dueDate, setDueDate] = useState('');
@@ -120,19 +122,35 @@ export default function Quick360Modal({
 
   const handleSendSurvey = async () => {
     if (selectedQuestions.length === 0) {
-      alert('Please add at least one question');
+      notify({
+        title: 'Add questions before sending',
+        description: 'Include at least one question in the 360° survey.',
+        variant: 'warning',
+      });
       return;
     }
     if (selectedQuestions.some((q) => !q.text.trim())) {
-      alert('Please complete or remove any blank questions before sending.');
+      notify({
+        title: 'Complete question required',
+        description: 'Finish or remove blank questions before sending the survey.',
+        variant: 'warning',
+      });
       return;
     }
     if (reviewers.length === 0) {
-      alert('Please add at least one reviewer');
+      notify({
+        title: 'Add recipients',
+        description: 'Invite at least one reviewer to send the survey.',
+        variant: 'warning',
+      });
       return;
     }
     if (reviewers.some(r => !r.name || !r.email)) {
-      alert('Please fill in all reviewer information');
+      notify({
+        title: 'Reviewer details needed',
+        description: 'Every reviewer must have a name and email address.',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -208,12 +226,20 @@ export default function Quick360Modal({
 
       if (reviewersError) throw reviewersError;
 
-      alert(`✅ 360° Survey sent to ${reviewers.length} reviewers for ${employee.name}!`);
+      notify({
+        title: '360° survey sent',
+        description: `${reviewers.length} reviewer${reviewers.length === 1 ? '' : 's'} invited for ${employee.name}.`,
+        variant: 'success',
+      });
       onSurveyCreated();
       handleClose();
     } catch (error) {
       console.error('Error creating survey:', error);
-      alert('Failed to create survey. Please try again.');
+      notify({
+        title: 'Failed to create survey',
+        description: 'Please try again or reach out if the problem continues.',
+        variant: 'error',
+      });
     } finally {
       setLoading(false);
     }

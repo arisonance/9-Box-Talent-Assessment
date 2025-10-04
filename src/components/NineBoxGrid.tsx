@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, ComponentType } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -9,12 +9,13 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Download, RotateCcw, Users, Target, FileText, Filter, X } from 'lucide-react';
+import { Download, RotateCcw, Users, Target, FileText, Filter, X, ClipboardList, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { getPerformancePotentialFromPosition, getBoxKey } from '../lib/utils';
+import { getPerformancePotentialFromPosition } from '../lib/utils';
 import type { Employee, Department, UserRole } from '../types';
 import type { PerformanceReview } from './PerformanceReviewModal';
 import { useBoxDefinitions } from '../hooks/useBoxDefinitions';
+import { useToast, Badge } from './unified';
 import BoxCell from './BoxCell';
 import EmployeeCard from './EmployeeCard';
 import UnassignedEmployees from './UnassignedEmployees';
@@ -37,6 +38,33 @@ interface NineBoxGridProps {
   onReviewSave?: (review: PerformanceReview) => void;
 }
 
+type FocusFilter = 'all' | 'pending-review' | 'misaligned' | 'needs-plan';
+
+interface EmployeeAlert {
+  hasManagerReview: boolean;
+  hasSelfReview: boolean;
+  pendingManagerReview: boolean;
+  pendingSelfReview: boolean;
+  pendingReview: boolean;
+  misaligned: boolean;
+  needsPlan: boolean;
+  planOverdueCount: number;
+}
+
+const MANAGER_SCORE_MAP: Record<string, number> = {
+  excellence: 5,
+  exceeds: 4,
+  meets: 3,
+  occasionally_meets: 2,
+  not_performing: 1,
+};
+
+const normalizeSelfScore = (review?: PerformanceReview) => {
+  if (!review) return null;
+  const avg = (review.humble_score + review.hungry_score + review.smart_score) / 3;
+  return Math.round(avg);
+};
+
 export default function NineBoxGrid({
   employees,
   departments,
@@ -49,6 +77,7 @@ export default function NineBoxGrid({
   performanceReviews = {},
   onReviewSave,
 }: NineBoxGridProps) {
+  const { notify } = useToast();
   const [draggedEmployee, setDraggedEmployee] = useState<Employee | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -63,6 +92,7 @@ export default function NineBoxGrid({
   const [activeDepartmentFilter, setActiveDepartmentFilter] = useState<string | null>(null);
   const [is360ModalOpen, setIs360ModalOpen] = useState(false);
   const [selected360Employee, setSelected360Employee] = useState<Employee | null>(null);
+  const [alignmentFilter, setAlignmentFilter] = useState<FocusFilter>('all');
 
   const { boxDefinitions, loading: boxLoading} = useBoxDefinitions(organizationId);
 
@@ -79,10 +109,96 @@ export default function NineBoxGrid({
     })
   );
 
-  // Filter employees by active department filter
-  const filteredEmployees = activeDepartmentFilter
-    ? employees.filter(emp => emp.department_id === activeDepartmentFilter)
-    : employees;
+  const departmentScopedEmployees = useMemo(() => {
+    return employees.filter(emp => {
+      const matchesSelected = selectedDepartments.length === 0
+        ? true
+        : (emp.department_id ? selectedDepartments.includes(emp.department_id) : false);
+      const matchesActive = activeDepartmentFilter
+        ? emp.department_id === activeDepartmentFilter
+        : true;
+      return matchesSelected && matchesActive;
+    });
+  }, [employees, selectedDepartments, activeDepartmentFilter]);
+
+  const employeeAlerts = useMemo<Record<string, EmployeeAlert>>(() => {
+    return employees.reduce((acc, employee) => {
+      const record = performanceReviews[employee.id] || {};
+      const managerReview = record.manager;
+      const selfReview = record.self;
+      const plan = employeePlans[employee.id];
+
+      const hasManagerReview = Boolean(managerReview);
+      const hasSelfReview = Boolean(selfReview);
+
+      const managerReviewComplete = Boolean(managerReview && managerReview.status === 'completed');
+      const selfReviewComplete = Boolean(selfReview && (selfReview.status === 'submitted' || selfReview.status === 'completed'));
+
+      const pendingManagerReview = hasManagerReview ? !managerReviewComplete : true;
+      const pendingSelfReview = hasSelfReview ? !selfReviewComplete : true;
+      const pendingReview = pendingManagerReview || pendingSelfReview;
+
+      const managerScore = managerReview && managerReview.manager_performance_summary
+        ? MANAGER_SCORE_MAP[managerReview.manager_performance_summary] ?? null
+        : null;
+      const selfScore = normalizeSelfScore(selfReview);
+      const misaligned = Boolean(
+        managerReviewComplete &&
+        selfReviewComplete &&
+        managerScore !== null &&
+        selfScore !== null &&
+        Math.abs(managerScore - selfScore) >= 1
+      );
+
+      const needsPlan = Boolean(employee.assessment) && !plan;
+      const planOverdueCount = (plan?.action_items || []).filter((item: any) => item.status === 'overdue').length;
+
+      acc[employee.id] = {
+        hasManagerReview,
+        hasSelfReview,
+        pendingManagerReview,
+        pendingSelfReview,
+        pendingReview,
+        misaligned,
+        needsPlan,
+        planOverdueCount,
+      };
+
+      return acc;
+    }, {} as Record<string, EmployeeAlert>);
+  }, [employees, employeePlans, performanceReviews]);
+
+  const focusCounts = useMemo(() => {
+    let pending = 0;
+    let misaligned = 0;
+    let needsPlan = 0;
+
+    departmentScopedEmployees.forEach(employee => {
+      const alerts = employeeAlerts[employee.id];
+      if (!alerts) return;
+      if (alerts.pendingReview) pending += 1;
+      if (alerts.misaligned) misaligned += 1;
+      if (alerts.needsPlan || alerts.planOverdueCount > 0) needsPlan += 1;
+    });
+
+    return { pending, misaligned, needsPlan };
+  }, [departmentScopedEmployees, employeeAlerts]);
+
+  const filteredEmployees = useMemo(() => {
+    switch (alignmentFilter) {
+      case 'pending-review':
+        return departmentScopedEmployees.filter(employee => employeeAlerts[employee.id]?.pendingReview);
+      case 'misaligned':
+        return departmentScopedEmployees.filter(employee => employeeAlerts[employee.id]?.misaligned);
+      case 'needs-plan':
+        return departmentScopedEmployees.filter(employee => {
+          const alerts = employeeAlerts[employee.id];
+          return alerts ? (alerts.needsPlan || alerts.planOverdueCount > 0) : false;
+        });
+      default:
+        return departmentScopedEmployees;
+    }
+  }, [departmentScopedEmployees, alignmentFilter, employeeAlerts]);
 
   const getReviewsForEmployee = (employeeId: string): PerformanceReview[] => {
     const record = performanceReviews[employeeId];
@@ -95,14 +211,111 @@ export default function NineBoxGrid({
   };
 
   // Group employees by box
-  const employeesByBox = filteredEmployees.reduce((acc, employee) => {
-    const boxKey = employee.assessment?.box_key || 'unassigned';
-    if (!acc[boxKey]) {
-      acc[boxKey] = [];
+  const employeesByBox = useMemo(() => {
+    return filteredEmployees.reduce((acc, employee) => {
+      const boxKey = employee.assessment?.box_key || 'unassigned';
+      if (!acc[boxKey]) {
+        acc[boxKey] = [];
+      }
+      acc[boxKey].push(employee);
+      return acc;
+    }, {} as Record<string, Employee[]>);
+  }, [filteredEmployees]);
+
+  const boxAlertSummary = useMemo(() => {
+    return Object.entries(employeesByBox).reduce((acc, [boxKey, list]) => {
+      const summary = list.reduce((totals, employee) => {
+        const alerts = employeeAlerts[employee.id];
+        if (!alerts) return totals;
+        if (alerts.pendingReview) totals.pendingReview += 1;
+        if (alerts.misaligned) totals.misaligned += 1;
+        if (alerts.needsPlan || alerts.planOverdueCount > 0) totals.needsPlan += 1;
+        return totals;
+      }, { pendingReview: 0, misaligned: 0, needsPlan: 0 });
+      acc[boxKey] = summary;
+      return acc;
+    }, {} as Record<string, { pendingReview: number; misaligned: number; needsPlan: number }>);
+  }, [employeesByBox, employeeAlerts]);
+
+  const { pending: pendingCount, misaligned: misalignedCount, needsPlan: needsPlanCount } = focusCounts;
+
+  const focusFilters = useMemo(() => (
+    [
+      {
+        id: 'all',
+        label: 'All talent',
+        icon: Users,
+        count: departmentScopedEmployees.length,
+      },
+      {
+        id: 'pending-review',
+        label: 'Reviews pending',
+        icon: ClipboardList,
+        count: pendingCount,
+      },
+      {
+        id: 'misaligned',
+        label: 'Alignment gaps',
+        icon: AlertTriangle,
+        count: misalignedCount,
+      },
+      {
+        id: 'needs-plan',
+        label: 'Plans needed',
+        icon: FileText,
+        count: needsPlanCount,
+      },
+    ] as Array<{ id: FocusFilter; label: string; icon: any; count: number }>
+  ), [departmentScopedEmployees.length, pendingCount, misalignedCount, needsPlanCount]);
+
+  const getCardMeta = useCallback((employee: Employee) => {
+    const alerts = employeeAlerts[employee.id];
+
+    if (!alerts) {
+      return {
+        hasManagerReview: false,
+        hasSelfReview: false,
+        topBadge: undefined,
+        bottomBanner: undefined,
+      };
     }
-    acc[boxKey].push(employee);
-    return acc;
-  }, {} as Record<string, Employee[]>);
+
+    let topBadge;
+    if (alerts.misaligned) {
+      topBadge = (
+        <Badge variant="danger" size="sm">
+          Alignment gap
+        </Badge>
+      );
+    } else if (alerts.pendingReview) {
+      topBadge = (
+        <Badge variant="warning" size="sm">
+          Review pending
+        </Badge>
+      );
+    } else if (alerts.needsPlan || alerts.planOverdueCount > 0) {
+      topBadge = (
+        <Badge variant="info" size="sm">
+          Plan needed
+        </Badge>
+      );
+    }
+
+    const bottomBanner = alerts.planOverdueCount > 0 ? (
+      <div className="bg-amber-100 border-t border-amber-200 px-3 py-1 text-[11px] text-amber-800 font-semibold">
+        {alerts.planOverdueCount} overdue action{alerts.planOverdueCount > 1 ? 's' : ''}
+      </div>
+    ) : undefined;
+
+    return {
+      hasManagerReview: alerts.hasManagerReview && !alerts.pendingManagerReview,
+      hasSelfReview: alerts.hasSelfReview && !alerts.pendingSelfReview,
+      topBadge,
+      bottomBanner,
+    };
+  }, [employeeAlerts]);
+
+  const draggedCardMeta = draggedEmployee ? getCardMeta(draggedEmployee) : undefined;
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -175,7 +388,11 @@ export default function NineBoxGrid({
       onEmployeeUpdate(updatedEmployee);
     } catch (error) {
       console.error('Error updating assessment:', error);
-      alert('Failed to update employee assessment. Please try again.');
+      notify({
+        title: 'Assessment update failed',
+        description: 'We could not move this employee. Please refresh and try again.',
+        variant: 'error',
+      });
     } finally {
       setIsUpdating(false);
     }
@@ -262,7 +479,11 @@ export default function NineBoxGrid({
       }
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Export failed. Please try again.');
+      notify({
+        title: 'Export failed',
+        description: 'Unable to export data. Please try again.',
+        variant: 'error',
+      });
     }
   };
 
@@ -284,14 +505,18 @@ export default function NineBoxGrid({
       onEmployeeUpdate();
     } catch (error) {
       console.error('Reset failed:', error);
-      alert('Reset failed. Please try again.');
+      notify({
+        title: 'Reset failed',
+        description: 'We could not clear assessments. Please try again.',
+        variant: 'error',
+      });
     } finally {
       setIsUpdating(false);
     }
   };
 
   // Modal handlers
-  const handleCellClick = (boxDefinition: any, cellEmployees: Employee[]) => {
+  const handleCellClick = (boxDefinition: any, _cellEmployees: Employee[]) => {
     setSelectedBoxDefinition(boxDefinition);
     setIsModalOpen(true);
   };
@@ -416,6 +641,7 @@ export default function NineBoxGrid({
   // Count employees with and without plans
   const assessedEmployees = filteredEmployees.filter(emp => emp.assessment);
   const employeesWithoutPlans = assessedEmployees.filter(emp => !employeePlans[emp.id]);
+  const employeesWithPlans = assessedEmployees.length - employeesWithoutPlans.length;
   const shouldShowGuidance = assessedCount > 0 && employeesWithoutPlans.length > 0;
 
   // Get active department name
@@ -537,7 +763,7 @@ export default function NineBoxGrid({
               <span className="text-xs font-medium text-gray-600">With Plans</span>
             </div>
             <div className="text-2xl font-semibold text-gray-900">
-              {Object.keys(employeePlans).length}
+              {employeesWithPlans}
             </div>
           </div>
 
@@ -549,6 +775,43 @@ export default function NineBoxGrid({
             <div className="text-2xl font-semibold text-gray-900">
               {unassignedEmployees.length}
             </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div className="flex flex-wrap gap-2">
+            {focusFilters.map((filter) => {
+              const Icon: ComponentType<{ className?: string }> = filter.icon;
+              const isActive = alignmentFilter === filter.id;
+              const isAll = filter.id === 'all';
+              const isDisabled = !isAll && filter.count === 0;
+
+              return (
+                <button
+                  key={filter.id}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => setAlignmentFilter(prev => (prev === filter.id ? 'all' : filter.id))}
+                  className={`
+                    inline-flex items-center gap-2 px-3 py-2 rounded-full border text-sm font-medium transition-all
+                    ${isActive ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-200'}
+                    ${isDisabled ? 'opacity-60 cursor-not-allowed hover:border-gray-200' : ''}
+                  `}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                  <span>{filter.label}</span>
+                  {(isAll ? departmentScopedEmployees.length : filter.count) > 0 && (
+                    <span
+                      className={`px-2 py-0.5 text-[11px] font-semibold rounded-full ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {isAll ? departmentScopedEmployees.length : filter.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -655,26 +918,38 @@ export default function NineBoxGrid({
 
             {/* Axis Labels and Grid Container */}
             <div className="relative">
-              {/* Performance axis label (horizontal) */}
-              <div className="flex justify-between items-center mb-4 px-20">
-                <span className="text-sm font-medium text-gray-500">Low</span>
-                <span className="text-lg font-bold text-gray-700">← PERFORMANCE →</span>
-                <span className="text-sm font-medium text-gray-500">High</span>
-              </div>
-
               <div className="flex">
-                {/* Potential axis label (vertical) */}
-                <div className="flex flex-col justify-between items-center mr-6 py-8">
-                  <span className="text-sm font-medium text-gray-500">High</span>
-                  <div className="-rotate-90 whitespace-nowrap">
-                    <span className="text-lg font-bold text-gray-700">POTENTIAL</span>
+                {/* Potential axis label (vertical) - stretches full height */}
+                <div className="flex flex-col mr-4">
+                  <div className="flex flex-col items-center justify-between h-full gap-3 px-3 py-6 bg-gray-50 rounded-lg border-2 border-gray-300">
+                    <span className="text-sm font-semibold text-gray-900 uppercase">High</span>
+                    <div className="flex flex-col items-center gap-2 flex-1 justify-center">
+                      <div className="w-0.5 flex-1 bg-gradient-to-b from-gray-900 to-gray-700"></div>
+                      <div className="-rotate-90 whitespace-nowrap">
+                        <span className="text-2xl font-black text-gray-900 tracking-wider">POTENTIAL</span>
+                      </div>
+                      <div className="w-0.5 flex-1 bg-gradient-to-b from-gray-700 to-gray-400"></div>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-500 uppercase">Low</span>
                   </div>
-                  <span className="text-sm font-medium text-gray-500">Low</span>
                 </div>
 
-                {/* 3x3 Grid - Much Larger */}
-                <div className="flex-1">
-                    <div className="grid grid-cols-3 grid-rows-3 gap-6 min-h-[1200px] bg-white/50 rounded-xl p-6 border-2 border-gray-200">
+                {/* Grid with Performance label above */}
+                <div className="flex-1 flex flex-col">
+                  {/* Performance axis label (horizontal) - stretches full width */}
+                  <div className="flex items-center justify-between w-full gap-3 px-6 py-3 bg-gray-50 rounded-lg border-2 border-gray-300 mb-4">
+                    <span className="text-sm font-semibold text-gray-500 uppercase">Low</span>
+                    <div className="flex items-center gap-2 flex-1 justify-center">
+                      <div className="h-0.5 flex-1 bg-gradient-to-r from-gray-400 to-gray-700"></div>
+                      <span className="text-2xl font-black text-gray-900 tracking-wider whitespace-nowrap">PERFORMANCE</span>
+                      <div className="h-0.5 flex-1 bg-gradient-to-r from-gray-700 to-gray-900"></div>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 uppercase">High</span>
+                  </div>
+
+                  {/* 3x3 Grid */}
+                  <div className="flex-1">
+                    <div className="grid grid-cols-3 grid-rows-3 gap-4 min-h-[1200px] bg-white/50 rounded-xl p-4 border-2 border-gray-200">
                       {boxDefinitions.map((boxDef) => (
                         <BoxCell
                           key={boxDef.key}
@@ -688,9 +963,13 @@ export default function NineBoxGrid({
                           onOpenSelfReview={handleOpenSelfReview}
                           onOpen360={handleOpen360}
                           employeePlans={employeePlans}
+                          focusFilter={alignmentFilter}
+                          alertSummary={boxAlertSummary[boxDef.key]}
+                          getCardMeta={getCardMeta}
                         />
                       ))}
                     </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -708,6 +987,7 @@ export default function NineBoxGrid({
             onCardClick={handleCardClick}
             employeePlans={employeePlans}
             onAddEmployee={() => setIsAddEmployeeModalOpen(true)}
+            getCardMeta={getCardMeta}
           />
         </div>
 
@@ -719,6 +999,11 @@ export default function NineBoxGrid({
               department={departments.find(d => d.id === draggedEmployee.department_id)}
               isDragging
               showMenu={false}
+              employeePlan={employeePlans[draggedEmployee.id]}
+              hasManagerReview={draggedCardMeta?.hasManagerReview}
+              hasSelfReview={draggedCardMeta?.hasSelfReview}
+              topRightBadge={draggedCardMeta?.topBadge}
+              bottomBanner={draggedCardMeta?.bottomBanner}
             />
           )}
         </DragOverlay>

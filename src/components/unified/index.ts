@@ -4,6 +4,7 @@ export { default as NavigationTabs } from './NavigationTabs';
 export { default as ModalLayout } from './ModalLayout';
 export { default as EmptyState } from './EmptyState';
 export { default as StatCard } from './StatCard';
+export { ToastProvider, useToast } from './ToastContext';
 
 // Badge system exports
 export {

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Mail, MapPin, Briefcase, Building2, User, Calendar, FileText, Sparkles, Loader2, CheckCircle, AlertCircle, Users as UsersIcon, Lock, AlertTriangle, TrendingUp, ClipboardList, Award, PenSquare } from 'lucide-react';
-import type { Employee, Department, Performance, Potential, ManagerNote } from '../types';
+import type { Employee, Department, ManagerNote } from '../types';
 import { analyzePerformanceReview } from '../lib/reviewAnalyzer';
 import ManagerNotes from './ManagerNotes';
 import OneOnOneModal from './OneOnOneModal';
@@ -9,6 +9,13 @@ import SuccessionPlanningModal from './SuccessionPlanningModal';
 import EnhancedEmployeePlanModal from './EnhancedEmployeePlanModal';
 import PerformanceReviewModal, { type PerformanceReview } from './PerformanceReviewModal';
 import Quick360Modal from './Quick360Modal';
+import { useToast } from './unified';
+
+type PanelKey = 'details' | 'review' | 'plan' | '360' | 'notes' | 'one-on-one' | 'pip' | 'succession' | 'perf-review' | 'itp-matrix'
+type NavKey = 'details' | 'ingest' | 'plan' | '360' | 'notes' | 'one-on-one' | 'pip' | 'succession' | 'perf-review' | 'itp-matrix'
+
+const panelFromNav = (key: NavKey): PanelKey => (key === 'ingest' ? 'review' : key)
+const navFromPanel = (key: PanelKey): NavKey => (key === 'review' ? 'ingest' : key)
 
 interface EmployeeDetailModalProps {
   isOpen: boolean;
@@ -37,7 +44,9 @@ export default function EmployeeDetailModal({
   performanceReviewRecord,
   onReviewSave,
 }: EmployeeDetailModalProps) {
-  const [activeTab, setActiveTab] = useState<'details' | 'review' | 'plan' | '360' | 'notes' | 'one-on-one' | 'pip' | 'succession' | 'perf-review' | 'itp-matrix'>(initialTab);
+  const { notify } = useToast();
+  const [activeTab, setActiveTab] = useState<PanelKey>(initialTab);
+  const [activeNav, setActiveNav] = useState<NavKey>(navFromPanel(initialTab));
   const [reviewText, setReviewText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
@@ -54,6 +63,11 @@ export default function EmployeeDetailModal({
     return Object.values(record).filter(Boolean) as PerformanceReview[];
   });
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const activatePanel = useCallback((panel: PanelKey) => {
+    setActiveTab(panel);
+    const navKey: NavKey = panel === 'review' ? 'ingest' : panel;
+    setActiveNav(navKey);
+  }, []);
 
   useEffect(() => {
     if (performanceReviewRecord) {
@@ -65,11 +79,10 @@ export default function EmployeeDetailModal({
   // Reset and auto-open performance review modal if initialTab is perf-review
   useEffect(() => {
     if (isOpen) {
-      setActiveTab(initialTab);
+      activatePanel(initialTab);
       setPerformanceReviewType(initialReviewType);
 
       if (initialTab === 'perf-review') {
-        // Slight delay to ensure modal is rendered
         setTimeout(() => {
           setIsPerformanceReviewModalOpen(true);
         }, 150);
@@ -77,7 +90,7 @@ export default function EmployeeDetailModal({
         setIsPerformanceReviewModalOpen(false);
       }
     }
-  }, [initialTab, initialReviewType, isOpen]);
+  }, [initialTab, initialReviewType, isOpen, activatePanel]);
 
   if (!isOpen) return null;
 
@@ -154,7 +167,7 @@ export default function EmployeeDetailModal({
       }
 
       // Switch to plan tab to show results
-      setActiveTab('plan');
+      activatePanel('plan');
     } catch (error) {
       console.error('Error analyzing review:', error);
       setAnalysisError(error instanceof Error ? error.message : 'Failed to analyze review. Please try again.');
@@ -223,140 +236,100 @@ export default function EmployeeDetailModal({
         </div>
 
         {/* Tabs - Compact Grid Layout */}
-        <div className="grid grid-cols-4 lg:grid-cols-10 gap-1 px-4 py-3 bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('perf-review')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'perf-review'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-indigo-50 border border-gray-200'
-            }`}
-          >
-            <ClipboardList className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">Review</span>
-            {performanceReviews.length > 0 && (
-              <span className="inline-block mt-1 px-1.5 py-0.5 bg-green-500 text-white rounded-full text-[10px] font-bold">
-                {performanceReviews.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('itp-matrix')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap border-2 ${
-              activeTab === 'itp-matrix'
-                ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg border-yellow-400'
-                : 'bg-gradient-to-br from-blue-50 to-purple-50 text-blue-900 hover:from-blue-100 hover:to-purple-100 border-blue-300'
-            }`}
-          >
-            <UsersIcon className="w-5 h-5 mx-auto mb-1" />
-            <span className="block">ITP Matrix</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('plan')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'plan'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-200'
-            }`}
-          >
-            <FileText className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">Dev Plan</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('360')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === '360'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-purple-50 border border-gray-200'
-            }`}
-          >
-            <UsersIcon className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">360</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('one-on-one')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'one-on-one'
-                ? 'bg-green-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-green-50 border border-gray-200'
-            }`}
-          >
-            <Calendar className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">1-on-1</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('notes')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'notes'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-amber-50 border border-gray-200'
-            }`}
-          >
-            <Lock className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">Notes</span>
-            {managerNotes.length > 0 && (
-              <span className="inline-block mt-1 px-1.5 py-0.5 bg-purple-500 text-white rounded-full text-[10px] font-bold">
-                {managerNotes.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('pip')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'pip'
-                ? 'bg-red-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-red-50 border border-gray-200'
-            }`}
-          >
-            <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">PIP</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('succession')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'succession'
-                ? 'bg-teal-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-teal-50 border border-gray-200'
-            }`}
-          >
-            <TrendingUp className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">Succession</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('review')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'review'
-                ? 'bg-pink-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-pink-50 border border-gray-200'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">Ingest</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('details')}
-            className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === 'details'
-                ? 'bg-gray-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-            }`}
-          >
-            <User className="w-4 h-4 mx-auto mb-1" />
-            <span className="block">Details</span>
-          </button>
+        <div className="grid grid-cols-4 lg:grid-cols-9 gap-1 px-4 py-3 bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
+          {[
+            {
+              key: 'perf-review' as NavKey,
+              label: 'Review & ITP',
+              icon: ClipboardList,
+              activeClass: 'bg-indigo-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-indigo-50 border border-gray-200',
+              badge: performanceReviews.length,
+              badgeClass: 'bg-green-500 text-white',
+            },
+            {
+              key: 'plan' as NavKey,
+              label: 'Dev Plan',
+              icon: FileText,
+              activeClass: 'bg-blue-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-200',
+            },
+            {
+              key: '360' as NavKey,
+              label: '360',
+              icon: UsersIcon,
+              activeClass: 'bg-purple-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-purple-50 border border-gray-200',
+            },
+            {
+              key: 'one-on-one' as NavKey,
+              label: '1-on-1',
+              icon: Calendar,
+              activeClass: 'bg-green-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-green-50 border border-gray-200',
+            },
+            {
+              key: 'notes' as NavKey,
+              label: 'Notes',
+              icon: Lock,
+              activeClass: 'bg-amber-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-amber-50 border border-gray-200',
+              badge: managerNotes.length,
+              badgeClass: 'bg-purple-500 text-white',
+            },
+            {
+              key: 'pip' as NavKey,
+              label: 'PIP',
+              icon: AlertTriangle,
+              activeClass: 'bg-red-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-red-50 border border-gray-200',
+            },
+            {
+              key: 'succession' as NavKey,
+              label: 'Succession',
+              icon: TrendingUp,
+              activeClass: 'bg-teal-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-teal-50 border border-gray-200',
+            },
+            {
+              key: 'ingest' as NavKey,
+              label: 'Ingest',
+              icon: Sparkles,
+              activeClass: 'bg-pink-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-pink-50 border border-gray-200',
+            },
+            {
+              key: 'details' as NavKey,
+              label: 'Details',
+              icon: User,
+              activeClass: 'bg-gray-600 text-white shadow-md',
+              inactiveClass: 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200',
+            },
+          ].map((item) => {
+            const Icon = item.icon;
+            const isActive = activeNav === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => activatePanel(panelFromNav(item.key))}
+                className={`px-3 py-2.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
+                  isActive ? item.activeClass : item.inactiveClass
+                }`}
+              >
+                <Icon className="w-4 h-4 mx-auto mb-1" />
+                <span className="block">{item.label}</span>
+                {item.badge && item.badge > 0 && (
+                  <span className={`inline-block mt-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${item.badgeClass ?? 'bg-gray-800 text-white'}`}>
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6" style={{ minHeight: '640px' }}>
           {/* Details Tab */}
           {activeTab === 'details' && (
             <div className="space-y-6">
@@ -816,11 +789,11 @@ export default function EmployeeDetailModal({
 
                 // Show alert if requires acknowledgment
                 if (note.requires_acknowledgment) {
-                  setTimeout(() => {
-                    alert(`✉️ Formal feedback sent to ${employee.name}\n\n` +
-                          `This feedback requires acknowledgment and has been flagged with ${note.severity?.toUpperCase()} severity.\n\n` +
-                          `The employee will see this feedback and must formally acknowledge receipt.`);
-                  }, 300);
+                  notify({
+                    title: 'Feedback sent for acknowledgment',
+                    description: `${employee.name} must acknowledge this ${note.severity ?? 'medium'} severity note.`,
+                    variant: 'info',
+                  });
                 }
 
                 // Update employee object if needed
@@ -865,24 +838,28 @@ export default function EmployeeDetailModal({
                   });
                 }
 
-                // Show confirmation
-                alert(`✅ Feedback acknowledged!\n\nThank you for confirming receipt of this feedback from your manager.`);
+                notify({
+                  title: 'Feedback acknowledged',
+                  description: `${employee.name} confirmed receipt of this feedback.`,
+                  variant: 'success',
+                });
               }}
             />
           )}
 
-          {/* Performance Review Tab */}
+          {/* Performance Review & ITP Matrix Tab (Combined) */}
           {activeTab === 'perf-review' && (
             <div className="space-y-6">
+              {/* Create New Review Section */}
               <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl p-8 border-4 border-indigo-300 shadow-xl">
                 <div className="flex items-start space-x-4 mb-6">
                   <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
                     <ClipboardList className="w-8 h-8 text-white" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">General Performance Review 2025</h3>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Performance Review & ITP Matrix</h3>
                     <p className="text-base text-gray-700 leading-relaxed">
-                      Complete comprehensive performance reviews with self-reflection and manager assessments including the <strong>Ideal Team Player</strong> matrix (Humble, Hungry, Smart).
+                      Complete comprehensive performance reviews with the <strong>Ideal Team Player</strong> matrix (Humble, Hungry, Smart), OKRs, and development areas.
                     </p>
                   </div>
                 </div>
@@ -922,124 +899,16 @@ export default function EmployeeDetailModal({
                     <li>Accomplishments, Impact & OKRs</li>
                     <li>Growth & Development Areas</li>
                     <li>Support & Feedback Needs</li>
-                    <li><strong>Ideal Team Player Matrix</strong> (Humble, Hungry, Smart)</li>
+                    <li><strong>Ideal Team Player Matrix</strong> (Humble, Hungry, Smart) with detailed 12-behavior scoring</li>
                     <li>Performance Summary & Additional Comments</li>
                   </ul>
                 </div>
               </div>
 
-              {/* Existing Reviews */}
-              {performanceReviews.length > 0 && (
+              {/* Existing Reviews with ITP Details */}
+              {performanceReviews.length > 0 ? (
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Review History</h3>
-                  <div className="space-y-3">
-                    {performanceReviews.map((review) => (
-                      <div
-                        key={review.id}
-                        className="bg-white rounded-lg p-5 border-2 border-gray-200 hover:border-indigo-300 transition-all"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              {review.review_type === 'self' ? (
-                                <User className="w-5 h-5 text-green-600" />
-                              ) : (
-                                <UsersIcon className="w-5 h-5 text-blue-600" />
-                              )}
-                              <h4 className="font-semibold text-gray-900">
-                                {review.review_type === 'self' ? 'Self-Reflection' : 'Manager Review'}
-                              </h4>
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                review.status === 'submitted' || review.status === 'completed'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-yellow-100 text-yellow-800'
-                              }`}>
-                                {review.status.toUpperCase()}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600">
-                              {review.review_type === 'manager' && `Reviewed by: ${review.reviewer_name}`}
-                              {review.review_type === 'self' && `Completed by: ${review.employee_name}`}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {review.submitted_at
-                                ? `Submitted: ${new Date(review.submitted_at).toLocaleDateString()}`
-                                : `Last updated: ${new Date(review.updated_at).toLocaleDateString()}`
-                              }
-                            </p>
-
-                            {/* Ideal Team Player Scores */}
-                            <div className="mt-3 flex items-center space-x-4">
-                              <div className="flex items-center space-x-2">
-                                <span className="text-xs text-gray-600 font-medium">Humble:</span>
-                                <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-bold rounded">{review.humble_score}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-xs text-gray-600 font-medium">Hungry:</span>
-                                <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-bold rounded">{review.hungry_score}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-xs text-gray-600 font-medium">Smart:</span>
-                                <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-bold rounded">{review.smart_score}</span>
-                              </div>
-                            </div>
-
-                            {review.manager_performance_summary && (
-                              <div className="mt-3">
-                                <span className="text-xs text-gray-600 font-medium">Performance Summary: </span>
-                                <span className="text-xs text-gray-900 font-semibold">
-                                  {review.manager_performance_summary.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <button
-                            onClick={() => {
-                              // TODO: Open review in view mode
-                              alert('View review details coming soon!');
-                            }}
-                            className="px-4 py-2 text-sm bg-indigo-100 text-indigo-700 font-medium rounded-lg hover:bg-indigo-200 transition-colors"
-                          >
-                            View Details
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {performanceReviews.length === 0 && (
-                <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-                  <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No Performance Reviews Yet</h3>
-                  <p className="text-sm text-gray-600">
-                    Start by creating a manager review or requesting a self-reflection.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ITP Matrix Tab */}
-          {activeTab === 'itp-matrix' && (
-            <div className="space-y-6">
-              <div className="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 rounded-2xl p-8 border-4 border-purple-300 shadow-xl">
-                <div className="flex items-start space-x-4 mb-6">
-                  <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
-                    <UsersIcon className="w-8 h-8 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Ideal Team Player Matrix</h3>
-                    <p className="text-base text-gray-700 leading-relaxed">
-                      View comprehensive assessments of Humble, Hungry, and People Smart behaviors with detailed 1-10 scoring across 12 core behaviors.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Existing ITP Assessments */}
-                {performanceReviews.length > 0 ? (
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Review History & ITP Matrix Scores</h3>
                   <div className="space-y-4">
                     {performanceReviews.map((review) => (
                       <div
@@ -1184,26 +1053,16 @@ export default function EmployeeDetailModal({
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="text-center py-12 bg-white rounded-xl border-2 border-dashed border-purple-300">
-                    <UsersIcon className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No ITP Assessments Yet</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Complete a performance review to assess Ideal Team Player behaviors.
-                    </p>
-                    <div className="flex justify-center gap-3">
-                      <button
-                        onClick={() => {
-                          setActiveTab('perf-review');
-                        }}
-                        className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all"
-                      >
-                        Start Assessment
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+                  <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No Performance Reviews Yet</h3>
+                  <p className="text-sm text-gray-600">
+                    Start by creating a manager review or requesting a self-reflection above.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

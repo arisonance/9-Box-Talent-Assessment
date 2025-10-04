@@ -9,6 +9,7 @@ interface DevelopmentDashboardProps {
   departments: Department[];
   employeePlans: Record<string, any>;
   onEmployeeClick: (employee: Employee) => void;
+  activeDepartmentIds?: string[];
 }
 
 type DevelopmentView = 'plans' | 'onboarding';
@@ -18,6 +19,7 @@ export default function DevelopmentDashboard({
   departments,
   employeePlans,
   onEmployeeClick,
+  activeDepartmentIds = [],
 }: DevelopmentDashboardProps) {
   const [activeView, setActiveView] = useState<DevelopmentView>('plans');
 
@@ -25,6 +27,14 @@ export default function DevelopmentDashboard({
     { id: 'plans', label: 'Development Plans', icon: Target },
     { id: 'onboarding', label: 'Onboarding', icon: UserPlus },
   ];
+
+  const scopedEmployees = activeDepartmentIds.length > 0
+    ? employees.filter(emp => emp.department_id && activeDepartmentIds.includes(emp.department_id))
+    : employees;
+
+  const scopedDepartments = activeDepartmentIds.length > 0
+    ? departments.filter(dept => activeDepartmentIds.includes(dept.id))
+    : departments;
 
   return (
     <div className="space-y-6">
@@ -37,11 +47,20 @@ export default function DevelopmentDashboard({
         />
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-6 space-y-4">
+          {activeDepartmentIds.length > 0 && (
+            <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 flex items-center justify-between">
+              <span>
+                Focusing on {activeDepartmentIds.length === 1 ? 'selected department' : 'selected departments'}.
+              </span>
+              <span className="font-semibold">{scopedEmployees.length} people with plans</span>
+            </div>
+          )}
+
           {activeView === 'plans' && (
             <PlansDashboard
-              employees={employees}
-              departments={departments}
+              employees={scopedEmployees}
+              departments={scopedDepartments}
               employeePlans={employeePlans}
               onEmployeeClick={onEmployeeClick}
             />

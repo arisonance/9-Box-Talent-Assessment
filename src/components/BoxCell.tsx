@@ -1,4 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
+import { ReactNode } from 'react';
 import { Users } from 'lucide-react';
 import type { Employee, Department, BoxDefinition } from '../types';
 import EmployeeCard from './EmployeeCard';
@@ -15,6 +16,18 @@ interface BoxCellProps {
   onOpenSelfReview?: (employee: Employee) => void;
   onOpen360?: (employee: Employee) => void;
   employeePlans?: Record<string, any>;
+  focusFilter?: 'all' | 'pending-review' | 'misaligned' | 'needs-plan';
+  alertSummary?: {
+    pendingReview: number;
+    misaligned: number;
+    needsPlan: number;
+  };
+  getCardMeta?: (employee: Employee) => {
+    hasManagerReview?: boolean;
+    hasSelfReview?: boolean;
+    topBadge?: ReactNode;
+    bottomBanner?: ReactNode;
+  };
 }
 
 export default function BoxCell({
@@ -29,6 +42,9 @@ export default function BoxCell({
   onOpenSelfReview,
   onOpen360,
   employeePlans = {},
+  focusFilter = 'all',
+  alertSummary,
+  getCardMeta,
 }: BoxCellProps) {
   const { setNodeRef, isOver: isDragOver } = useDroppable({
     id: `box-${boxDefinition.key}`,
@@ -107,6 +123,36 @@ export default function BoxCell({
 
   const styling = getBoxStyling();
 
+  const highlightActive = (() => {
+    if (!alertSummary || focusFilter === 'all') return false;
+    if (focusFilter === 'pending-review') return alertSummary.pendingReview > 0;
+    if (focusFilter === 'misaligned') return alertSummary.misaligned > 0;
+    if (focusFilter === 'needs-plan') return alertSummary.needsPlan > 0;
+    return false;
+  })();
+
+  const highlightRingClass = (() => {
+    if (!highlightActive) return '';
+    switch (focusFilter) {
+      case 'pending-review':
+        return 'ring-2 ring-amber-400 ring-offset-2 ring-offset-white';
+      case 'misaligned':
+        return 'ring-2 ring-rose-400 ring-offset-2 ring-offset-white';
+      case 'needs-plan':
+        return 'ring-2 ring-indigo-400 ring-offset-2 ring-offset-white';
+      default:
+        return 'ring-2 ring-blue-400 ring-offset-2 ring-offset-white';
+    }
+  })();
+
+  const summaryChips = alertSummary
+    ? [
+        { key: 'pendingReview', label: 'Reviews pending', value: alertSummary.pendingReview, className: 'bg-amber-100 text-amber-700' },
+        { key: 'misaligned', label: 'Alignment gaps', value: alertSummary.misaligned, className: 'bg-rose-100 text-rose-700' },
+        { key: 'needsPlan', label: 'Plans needed', value: alertSummary.needsPlan, className: 'bg-indigo-100 text-indigo-700' },
+      ].filter(chip => chip.value > 0)
+    : [];
+
   return (
     <div
       ref={setNodeRef}
@@ -117,6 +163,7 @@ export default function BoxCell({
         ${isDragOver ? 'border-blue-400 bg-blue-100 shadow-md' : ''}
         ${isOver ? 'border-green-400 bg-green-100 shadow-md' : ''}
         hover:shadow-md
+        ${highlightRingClass}
       `}
     >
       {/* Header */}
@@ -136,6 +183,19 @@ export default function BoxCell({
           <p className={`text-xs ${styling.textAccent} font-medium`}>
             {boxDefinition.action_hint}
           </p>
+        )}
+
+        {summaryChips.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {summaryChips.map(chip => (
+              <span
+                key={chip.key}
+                className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded ${chip.className}`}
+              >
+                {chip.value} {chip.label}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 
@@ -164,20 +224,27 @@ export default function BoxCell({
 
       {/* Employees - Show first 3 with "View All" indicator */}
       <div className="flex-1 space-y-2">
-        {employees.slice(0, 3).map((employee) => (
-          <EmployeeCard
-            key={employee.id}
-            employee={employee}
-            department={getDepartment(employee)}
-            showMenu={false}
-            onOpenPlan={onOpenPlan}
-            onCardClick={onCardClick}
-            onOpenManagerReview={onOpenManagerReview}
-            onOpenSelfReview={onOpenSelfReview}
-            onOpen360={onOpen360}
-            employeePlan={employeePlans[employee.id]}
-          />
-        ))}
+        {employees.slice(0, 3).map((employee) => {
+          const meta = getCardMeta?.(employee) || {};
+          return (
+            <EmployeeCard
+              key={employee.id}
+              employee={employee}
+              department={getDepartment(employee)}
+              showMenu={false}
+              onOpenPlan={onOpenPlan}
+              onCardClick={onCardClick}
+              onOpenManagerReview={onOpenManagerReview}
+              onOpenSelfReview={onOpenSelfReview}
+              onOpen360={onOpen360}
+              employeePlan={employeePlans[employee.id]}
+              hasManagerReview={meta.hasManagerReview}
+              hasSelfReview={meta.hasSelfReview}
+              topRightBadge={meta.topBadge}
+              bottomBanner={meta.bottomBanner}
+            />
+          );
+        })}
         {employees.length > 3 && onClick && (
           <button
             onClick={(e) => {

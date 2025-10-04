@@ -1,0 +1,15 @@
+node_modules
+web/.next
+web/.next/**
+web/.next.types
+web/.next/**
+web/.next/types
+web/.next/types/**
+web/.next/**/*.d.ts
+*.generated.ts
+**/*.generated.ts
+**/__generated__/**
+coverage
+build
+dist
+.venv

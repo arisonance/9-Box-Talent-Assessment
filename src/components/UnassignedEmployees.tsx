@@ -1,4 +1,5 @@
-import { Users, AlertCircle, Target, ArrowRight, UserPlus } from 'lucide-react';
+import { ReactNode } from 'react';
+import { Users, Target, UserPlus } from 'lucide-react';
 import type { Employee, Department, UserRole } from '../types';
 import EmployeeCard from './EmployeeCard';
 
@@ -11,6 +12,12 @@ interface UnassignedEmployeesProps {
   onCardClick?: (employee: Employee) => void;
   employeePlans?: Record<string, any>;
   onAddEmployee?: () => void;
+  getCardMeta?: (employee: Employee) => {
+    hasManagerReview?: boolean;
+    hasSelfReview?: boolean;
+    topBadge?: ReactNode;
+    bottomBanner?: ReactNode;
+  };
 }
 
 export default function UnassignedEmployees({
@@ -22,6 +29,7 @@ export default function UnassignedEmployees({
   onCardClick,
   employeePlans = {},
   onAddEmployee,
+  getCardMeta,
 }: UnassignedEmployeesProps) {
   const getDepartment = (employee: Employee) => {
     return employee.department_id
@@ -80,7 +88,9 @@ export default function UnassignedEmployees({
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {employees.map((employee) => (
+              {employees.map((employee) => {
+                const meta = getCardMeta?.(employee) || {};
+                return (
                 <EmployeeCard
                   key={employee.id}
                   employee={employee}
@@ -89,8 +99,13 @@ export default function UnassignedEmployees({
                   onOpenPlan={onOpenPlan}
                   onCardClick={onCardClick}
                   employeePlan={employeePlans[employee.id]}
+                  hasManagerReview={meta.hasManagerReview}
+                  hasSelfReview={meta.hasSelfReview}
+                  topRightBadge={meta.topBadge}
+                  bottomBanner={meta.bottomBanner}
                 />
-              ))}
+                );
+              })}
             </div>
 
             {isUpdating && (

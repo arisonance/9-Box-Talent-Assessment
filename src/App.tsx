@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 import type { User as AppUser, Organization } from './types';
 import Dashboard from './components/Dashboard';
+import { ToastProvider } from './components/unified';
 
 // Fixed organization ID (no auth needed)
 const FIXED_ORG_ID = 'f8a8b8c8-d8e8-4f8f-8f8f-8f8f8f8f8f8f';
@@ -154,13 +155,15 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Dashboard 
-        user={mockUser}
-        userProfile={mockUserProfile}
-        organization={organization}
-      />
-    </div>
+    <ToastProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Dashboard 
+          user={mockUser}
+          userProfile={mockUserProfile}
+          organization={organization}
+        />
+      </div>
+    </ToastProvider>
   );
 }
 

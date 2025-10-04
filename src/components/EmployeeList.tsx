@@ -23,7 +23,7 @@ export default function EmployeeList({
   employees,
   departments,
   onEmployeeUpdate,
-  userRole,
+  userRole: _userRole,
   employeePlans = {},
   onPlansUpdate,
   organizationId,
@@ -185,7 +185,7 @@ export default function EmployeeList({
           performanceReviewRecord={getReviewRecord(selectedEmployee.id)}
           onReviewSave={handleReviewSaveInternal}
           onSavePlan={handleSavePlan}
-          onUpdateEmployee={(updatedEmployee) => {
+          onUpdateEmployee={() => {
             onEmployeeUpdate();
           }}
         />
