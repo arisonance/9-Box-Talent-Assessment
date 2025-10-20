@@ -34,6 +34,10 @@ import { EmployeeNameLink } from './unified';
 import { analyzePerformanceReview } from '../lib/reviewAnalyzer';
 import { composeReviewNarrative } from '../lib/reviewTextFormatter';
 import type { PerformanceReview } from './PerformanceReviewModal';
+import PIPConversationCoach from './PIPConversationCoach';
+import PIPDocumentationAssistant from './PIPDocumentationAssistant';
+import PIPProgressIntelligence from './PIPProgressIntelligence';
+import PIPAuditTrail from './PIPAuditTrail';
 
 interface PIPModalProps {
   isOpen: boolean;
@@ -870,10 +874,14 @@ export default function PIPModal({
                 </div>
               </div>
 
-              {/* Tabs Content */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column: Expectations & Check-ins */}
+              {/* Main Content Grid with Coaching Sidebar */}
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6">
+                {/* Main Content: Expectations, Check-ins, Resources */}
                 <div className="space-y-6">
+                  {/* Inner Grid for Expectations & Check-ins */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left: Expectations & Check-ins */}
+                    <div className="space-y-6">
                   {/* Expectations by Phase */}
                   <div className="border-2 border-gray-200 rounded-xl p-5">
                     <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -1054,6 +1062,40 @@ export default function PIPModal({
                       </div>
                     </div>
                   </div>
+                </div>
+                  </div>
+                </div>
+
+                {/* Coaching Sidebar */}
+                <div className="space-y-4">
+                  <PIPConversationCoach
+                    pip={selectedPIP}
+                    checkIns={checkIns}
+                  />
+
+                  <PIPProgressIntelligence
+                    pip={selectedPIP}
+                    expectations={expectations}
+                    checkIns={checkIns}
+                    milestoneReviews={milestoneReviews}
+                    employeeName={employee.name}
+                  />
+
+                  <PIPDocumentationAssistant
+                    pip={selectedPIP}
+                    expectations={expectations}
+                    checkIns={checkIns}
+                    milestoneReviews={milestoneReviews}
+                    employeeName={employee.name}
+                  />
+
+                  <PIPAuditTrail
+                    pip={selectedPIP}
+                    expectations={expectations}
+                    checkIns={checkIns}
+                    milestoneReviews={milestoneReviews}
+                    employeeName={employee.name}
+                  />
                 </div>
               </div>
             </div>

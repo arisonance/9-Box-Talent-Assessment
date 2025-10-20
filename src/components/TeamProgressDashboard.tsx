@@ -4,6 +4,8 @@ import type { Employee, Department, EmployeePlan } from '../types';
 import { EmployeeCardUnified } from './unified';
 import { supabase } from '../lib/supabase';
 import type { PerformanceReview } from './PerformanceReviewModal';
+import SuggestedNextSteps from './SuggestedNextSteps';
+import BatchReviewFlow from './BatchReviewFlow';
 
 interface TeamProgressDashboardProps {
   employees: Employee[];
@@ -43,6 +45,10 @@ export default function TeamProgressDashboard({
   const [filter, setFilter] = useState<FilterType>('all');
   const [surveys360, setSurveys360] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [batchFlowEmployees, setBatchFlowEmployees] = useState<Employee[]>([]);
+  const [batchFlowTitle, setBatchFlowTitle] = useState('');
+  const [batchFlowDescription, setBatchFlowDescription] = useState('');
+  const [isBatchFlowOpen, setIsBatchFlowOpen] = useState(false);
 
   useEffect(() => {
     loadSurveys();
@@ -201,6 +207,25 @@ export default function TeamProgressDashboard({
             <p className="text-gray-600 mt-1">Track progress on building complete employee profiles</p>
           </div>
         </div>
+
+        {/* Suggested Next Steps - only show if incomplete items exist */}
+        {stats.complete < stats.total && (
+          <SuggestedNextSteps
+            employeeProgress={employeeProgress}
+            surveys360={surveys360}
+            onOpenReviewModal={onOpenReviewModal}
+            onOpenPlanModal={onOpenPlanModal}
+            onOpen360Modal={onOpen360Modal}
+            onOpenDetailModal={onOpenDetailModal}
+            organizationId={organizationId}
+            onOpenBatchReviewFlow={(employees, title, description) => {
+              setBatchFlowEmployees(employees);
+              setBatchFlowTitle(title);
+              setBatchFlowDescription(description);
+              setIsBatchFlowOpen(true);
+            }}
+          />
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
@@ -387,6 +412,23 @@ export default function TeamProgressDashboard({
           })}
         </div>
       )}
+
+      {/* Batch Review Flow Modal */}
+      <BatchReviewFlow
+        isOpen={isBatchFlowOpen}
+        onClose={() => {
+          setIsBatchFlowOpen(false);
+          setBatchFlowEmployees([]);
+        }}
+        employees={batchFlowEmployees}
+        departments={departments}
+        onOpenReviewForEmployee={(employee) => {
+          setIsBatchFlowOpen(false);
+          onOpenReviewModal(employee);
+        }}
+        title={batchFlowTitle}
+        description={batchFlowDescription}
+      />
     </div>
   );
 }
