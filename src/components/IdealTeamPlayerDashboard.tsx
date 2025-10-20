@@ -1,9 +1,34 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Award, Users as UsersIcon, TrendingUp, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import type { Employee, Department } from '../types';
 import EmployeeCard from './EmployeeCard';
 import EmployeeDetailModal from './EmployeeDetailModal';
 import PerformanceReviewModal, { type PerformanceReview } from './PerformanceReviewModal';
+import { EmployeeNameLink } from './unified';
+
+const IDEAL_TEAM_PLAYER_COACHING: Record<'humble' | 'hungry' | 'smart', { habit: string; prompt: string; tone: string }> = {
+  humble: {
+    habit: 'Schedule a peer gratitude spotlight or ask them to name three team wins this week.',
+    prompt: 'Humility grows when recognition flows outward. Encourage genuine appreciation moments.',
+    tone: 'bg-blue-50 border-blue-200 text-blue-800',
+  },
+  hungry: {
+    habit: 'Channel energy into a defined stretch project with a mid-cycle milestone.',
+    prompt: 'Refocus ambition on a clear target so drive doesn’t scatter across tasks.',
+    tone: 'bg-amber-50 border-amber-200 text-amber-800',
+  },
+  smart: {
+    habit: 'Plan a listening tour or role-play a tough conversation to sharpen people instincts.',
+    prompt: 'People-smart teammates slow down to understand tone, context, and the person in front of them.',
+    tone: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+  },
+};
+
+const IDEAL_TEAM_PLAYER_LABELS: Record<'humble' | 'hungry' | 'smart', string> = {
+  humble: 'Humility',
+  hungry: 'Drive',
+  smart: 'People Smart',
+};
 
 interface IdealTeamPlayerDashboardProps {
   employees: Employee[];
@@ -31,6 +56,7 @@ export default function IdealTeamPlayerDashboard({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewType, setReviewType] = useState<'self' | 'manager'>('manager');
   const [filterCategory, setFilterCategory] = useState<'all' | 'assessed' | 'not-assessed'>('all');
+  const [habitCompletions, setHabitCompletions] = useState<Record<string, boolean>>({});
 
   // Calculate ITP scores for employees with reviews
   const employeesWithScores = employees.map((employee) => {
@@ -81,6 +107,36 @@ export default function IdealTeamPlayerDashboard({
   );
   const needsImprovement = filteredEmployees.filter((e) => e.managerScores && e.managerScores.overall < 5);
   const notAssessed = filteredEmployees.filter((e) => !e.managerScores);
+
+  const coachingTracks = useMemo(() => {
+    return filteredEmployees
+      .filter((entry) => entry.managerScores)
+      .map((entry) => {
+        const managerScores = entry.managerScores!;
+        const dims: Array<{ key: 'humble' | 'hungry' | 'smart'; value: number }> = [
+          { key: 'humble', value: managerScores.humble },
+          { key: 'hungry', value: managerScores.hungry },
+          { key: 'smart', value: managerScores.smart },
+        ];
+        const weakest = dims.sort((a, b) => a.value - b.value)[0];
+        return {
+          employee: entry.employee,
+          focus: weakest.key,
+          score: weakest.value,
+        };
+      })
+      .filter(track => track.score < 9)
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 6);
+  }, [filteredEmployees]);
+
+  const toggleHabitCommitment = (employeeId: string, focus: 'humble' | 'hungry' | 'smart') => {
+    const key = `${employeeId}-${focus}`;
+    setHabitCompletions((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const handleEmployeeClick = (employee: Employee) => {
     setSelectedEmployee(employee);
@@ -188,6 +244,59 @@ export default function IdealTeamPlayerDashboard({
           </button>
         </div>
       </div>
+
+      {coachingTracks.length > 0 && (
+        <div className="bg-white border border-purple-100 rounded-xl shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-purple-900">Coaching tracks from Ideal Team Player scores</h3>
+              <p className="text-sm text-purple-700">Focus coaching energy where Humble, Hungry, or Smart scores dip below expectations.</p>
+            </div>
+            <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold">
+              {coachingTracks.length} priority nudges
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {coachingTracks.map((track) => {
+              const recipe = IDEAL_TEAM_PLAYER_COACHING[track.focus];
+              const completionKey = `${track.employee.id}-${track.focus}`;
+              const completed = habitCompletions[completionKey];
+              return (
+                <div
+                  key={completionKey}
+                  className={`rounded-lg border px-4 py-3 text-sm ${recipe.tone}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <EmployeeNameLink
+                        employee={track.employee}
+                        className="text-sm font-semibold text-slate-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                      />
+                      <p className="text-xs text-slate-600">Focus: {IDEAL_TEAM_PLAYER_LABELS[track.focus]}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500">Score {track.score}/10</span>
+                  </div>
+                  <p className="mt-2 leading-relaxed text-slate-700">{recipe.habit}</p>
+                  <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-500">Why</p>
+                  <p className="text-xs text-slate-600">{recipe.prompt}</p>
+                  <button
+                    type="button"
+                    onClick={() => toggleHabitCommitment(track.employee.id, track.focus)}
+                    className={`mt-3 inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold transition ${
+                      completed
+                        ? 'border-green-500 bg-green-600 text-white hover:bg-green-500'
+                        : 'border-purple-200 bg-white text-purple-600 hover:bg-purple-600 hover:text-white'
+                    }`}
+                  >
+                    {completed ? 'Logged' : 'Log habit'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Info Guide */}
       <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg shadow border-2 border-purple-200 p-6">

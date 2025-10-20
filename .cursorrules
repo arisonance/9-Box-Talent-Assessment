@@ -29,6 +29,24 @@ When the user says "the app won't open" or "browser isn't opening":
 3. Provide the direct URL for manual opening: http://127.0.0.1:5173/
 4. Only debug the app itself after confirming the auto-open step is working.
 
+## ⚡ Vite & Build Optimization
+
+### Development
+- Use Vite's environment variables (import.meta.env.*)
+- Leverage Vite's HMR API for preserving state during development
+- Configure proxy in vite.config.ts for API calls to avoid CORS
+
+### Performance
+- Use dynamic imports for code splitting: `const Component = lazy(() => import('./Component'))`
+- Configure chunk splitting in vite.config.ts for large dependencies
+- Optimize bundle size by checking with `npm run build -- --analyze`
+- Use Vite's glob imports for dynamic module loading when appropriate
+
+### Asset Handling
+- Import images/assets explicitly for Vite's optimization
+- Use public/ folder only for assets that need exact filenames
+- Leverage Vite's built-in asset optimization (no need for additional loaders)
+
 ## 📁 File Structure Rules
 
 ### Component Organization
@@ -46,6 +64,32 @@ When the user says "the app won't open" or "browser isn't opening":
 - Component files: PascalCase (e.g., EmployeeCard.tsx)
 - Utility files: camelCase (e.g., reviewAnalyzer.ts)
 - Unified components: [ComponentName]Unified.tsx or descriptive name
+
+## 🔧 React & TypeScript Best Practices
+
+### Component Development
+- Use functional components with TypeScript interfaces for props
+- Prefer named exports for components (better for refactoring)
+- Define prop types with TypeScript interfaces, not inline types
+- Use React.FC sparingly; prefer explicit typing: `function Component(props: Props)`
+- Implement proper error boundaries for production code
+- Use React.memo() only when performance profiling shows benefit
+
+### Hooks & State Management
+- Custom hooks MUST start with 'use' prefix
+- Keep hooks at top level, never in conditionals or loops
+- Use useCallback for functions passed to child components
+- Use useMemo for expensive calculations only
+- Prefer useState for local state, context for shared state
+- Document custom hooks with JSDoc comments
+
+### TypeScript Standards
+- Enable strict mode in tsconfig.json
+- Avoid 'any' type; use 'unknown' if type is truly unknown
+- Use type inference where possible, explicit types for public APIs
+- Define types in separate .types.ts files for shared types
+- Use const assertions for literal types: `as const`
+- Prefer interfaces for objects, types for unions/intersections
 
 ## 🎨 Design System Rules
 
@@ -94,6 +138,15 @@ All new modals SHOULD use ModalLayout:
 </ModalLayout>
 ```
 
+### Advanced Tailwind Patterns
+- Create reusable class combinations using @apply sparingly (prefer components)
+- Use cn() utility for conditional classes (already using clsx pattern)
+- Define custom colors and spacing in tailwind.config.js, not inline
+- Use Tailwind's arbitrary values [value] only when design tokens don't exist
+- Avoid excessive class combinations (>10 classes suggests need for component)
+- Use Tailwind's JIT mode (enabled by default in v3)
+- Group responsive/state modifiers: `hover:focus:bg-blue-500` not `hover:bg-blue-500 focus:bg-blue-500`
+
 ## 🐛 Common Issues & Fixes
 
 ### Issue: "Duplicate style attribute in JSX"
@@ -132,6 +185,29 @@ import { useState } from '@supabase/supabase-js';
 
 ## ✅ Code Quality Standards
 
+### Error Handling
+- Always provide user-friendly error messages
+- Use try-catch with specific error types
+- Log errors to console in development, to service in production
+- Implement error boundaries for React component errors
+- Never silently catch errors without logging or user feedback
+
+### Accessibility (a11y)
+- All interactive elements must have accessible names
+- Use semantic HTML elements (button, nav, main, etc.)
+- Ensure keyboard navigation works for all interactive elements
+- Test with screen reader when implementing forms/modals
+- Color contrast must meet WCAG AA standards minimum
+- Always provide alt text for images
+- Use proper heading hierarchy (h1, h2, h3)
+
+### Performance Monitoring
+- Use React DevTools Profiler for identifying slow renders
+- Monitor bundle size with each build
+- Check Lighthouse scores periodically
+- Use lazy loading for routes and heavy components
+- Avoid unnecessary re-renders with proper memoization
+
 ### Before Committing Changes
 1. ✅ All imports are correct (React from 'react', not other packages)
 2. ✅ No duplicate style attributes
@@ -139,6 +215,8 @@ import { useState } from '@supabase/supabase-js';
 4. ✅ Dev server config in `vite.config.ts` still targets host `127.0.0.1` and port `5173`
 5. ✅ Browser opens automatically after dev server starts
 6. ✅ Using unified components where applicable
+7. ✅ TypeScript has no errors (avoid 'any' types)
+8. ✅ Accessibility requirements met for new UI elements
 
 ### Testing Checklist
 Before saying "done", verify:

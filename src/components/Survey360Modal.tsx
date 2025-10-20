@@ -33,6 +33,7 @@ import {
   DEFAULT_QUESTION_IDS,
   getQuestionById,
 } from '../lib/feedback360QuestionBank';
+import { EmployeeNameLink } from './unified';
 
 interface Survey360ModalProps {
   isOpen: boolean;
@@ -309,7 +310,13 @@ export default function Survey360Modal({
   const renderListView = () => (
     <div className="p-6">
       <div className="mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">360 Surveys for {employee.name}</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          360 Surveys for{' '}
+          <EmployeeNameLink
+            employee={employee}
+            className="font-semibold text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+          />
+        </h3>
         <p className="text-sm text-gray-600">
           Create a new survey or view existing feedback for this employee.
         </p>
@@ -476,7 +483,12 @@ export default function Survey360Modal({
               Build Your Question Set
             </h4>
             <p className="text-xs text-purple-700">
-              Start with our hand-picked prompts or add your own. Edit any question inline to tailor it to {employee.name}.
+              Start with our hand-picked prompts or add your own. Edit any question inline to tailor it to{' '}
+              <EmployeeNameLink
+                employee={employee}
+                className="font-semibold text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+              />
+              .
             </p>
           </div>
 
@@ -763,7 +775,13 @@ export default function Survey360Modal({
       <div className="p-6 max-h-[70vh] overflow-y-auto">
         <div className="mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">360 Feedback Report</h3>
-          <p className="text-sm text-gray-600">AI-powered analysis of feedback for {employee.name}</p>
+          <p className="text-sm text-gray-600">
+            AI-powered analysis of feedback for{' '}
+            <EmployeeNameLink
+              employee={employee}
+              className="font-semibold text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+            />
+          </p>
         </div>
 
         {/* Overall Strengths */}

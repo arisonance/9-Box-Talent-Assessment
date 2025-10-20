@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { AlertTriangle, TrendingUp, Clock, Award, Users, AlertCircle, CheckCircle, Info } from 'lucide-react';
-import type { Employee, Department } from '../types';
+import { AlertTriangle, TrendingUp, Clock, Award, Users, AlertCircle, CheckCircle, Info, Shield } from 'lucide-react';
+import type { Employee, Department, EmployeePlan } from '../types';
 import EmployeeCard from './EmployeeCard';
 import EmployeeDetailModal from './EmployeeDetailModal';
+import RetentionPlanModal from './RetentionPlanModal';
 
 interface FlightRiskDashboardProps {
   employees: Employee[];
   departments: Department[];
-  employeePlans?: Record<string, any>;
-  onPlansUpdate?: (plans: Record<string, any>) => void;
+  employeePlans?: Record<string, EmployeePlan>;
+  onPlansUpdate?: (plans: Record<string, EmployeePlan>) => void;
   onEmployeeUpdate?: () => void;
 }
 
@@ -36,6 +37,8 @@ export default function FlightRiskDashboard({
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<RiskLevel | 'all'>('all');
+  const [retentionPlanEmployee, setRetentionPlanEmployee] = useState<Employee | null>(null);
+  const [isRetentionModalOpen, setIsRetentionModalOpen] = useState(false);
 
   // Calculate risk assessment for each employee
   const calculateRisk = (employee: Employee): RiskAssessment => {
@@ -139,6 +142,16 @@ export default function FlightRiskDashboard({
     }
   };
 
+  const handleSaveRetentionPlan = (plan: Partial<EmployeePlan>) => {
+    if (retentionPlanEmployee && onPlansUpdate) {
+      const updatedPlans = {
+        ...employeePlans,
+        [retentionPlanEmployee.id]: plan as EmployeePlan,
+      };
+      onPlansUpdate(updatedPlans);
+    }
+  };
+
   const getRiskColor = (level: RiskLevel) => {
     switch (level) {
       case 'high':
@@ -164,7 +177,7 @@ export default function FlightRiskDashboard({
   return (
     <div className="space-y-6">
       {/* Header Stats */}
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="surface-card space-y-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Flight Risk Dashboard</h2>
@@ -174,13 +187,13 @@ export default function FlightRiskDashboard({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           {/* Total Employees */}
           <button
             onClick={() => setActiveFilter('all')}
-            className={`p-4 rounded-lg border-2 transition-all ${
+            className={`rounded-lg border bg-white px-4 py-3 transition ${
               activeFilter === 'all'
-                ? 'border-blue-500 bg-blue-50'
+                ? 'border-blue-400 shadow-sm'
                 : 'border-gray-200 hover:border-gray-300'
             }`}
           >
@@ -194,9 +207,9 @@ export default function FlightRiskDashboard({
           {/* High Risk */}
           <button
             onClick={() => setActiveFilter('high')}
-            className={`p-4 rounded-lg border-2 transition-all ${
+            className={`rounded-lg border bg-white px-4 py-3 transition ${
               activeFilter === 'high'
-                ? 'border-red-500 bg-red-50'
+                ? 'border-red-400 shadow-sm'
                 : 'border-gray-200 hover:border-gray-300'
             }`}
           >
@@ -215,9 +228,9 @@ export default function FlightRiskDashboard({
           {/* Medium Risk */}
           <button
             onClick={() => setActiveFilter('medium')}
-            className={`p-4 rounded-lg border-2 transition-all ${
+            className={`rounded-lg border bg-white px-4 py-3 transition ${
               activeFilter === 'medium'
-                ? 'border-yellow-500 bg-yellow-50'
+                ? 'border-amber-400 shadow-sm'
                 : 'border-gray-200 hover:border-gray-300'
             }`}
           >
@@ -236,10 +249,10 @@ export default function FlightRiskDashboard({
           {/* Low Risk */}
           <button
             onClick={() => setActiveFilter('low')}
-            className={`p-4 rounded-lg border-2 transition-all ${
+            className={`rounded-lg border bg-white px-4 py-3 transition ${
               activeFilter === 'low'
-                ? 'border-green-500 bg-green-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-green-400 shadow-sm'
+                : 'border-gray-200 hover-border-gray-300'
             }`}
           >
             <div className="flex items-center justify-between mb-2">
@@ -257,12 +270,12 @@ export default function FlightRiskDashboard({
       </div>
 
       {/* Risk Factor Legend */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow border-2 border-blue-200 p-6">
+      <div className="surface-muted space-y-4">
         <div className="flex items-start">
-          <Info className="w-5 h-5 text-blue-600 mt-1 mr-3 flex-shrink-0" />
+          <Info className="w-5 h-5 text-indigo-500 mt-1 mr-3 flex-shrink-0" />
           <div>
-            <h3 className="font-semibold text-blue-900 mb-2">Risk Assessment Factors</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-blue-800">
+            <h3 className="section-heading mb-2">Risk Assessment Factors</h3>
+            <div className="grid grid-cols-1 gap-3 text-sm text-slate-600 md:grid-cols-2 lg:grid-cols-4">
               <div className="flex items-center">
                 <Clock className="w-4 h-4 mr-2" />
                 <span>Tenure (new hires & long tenure)</span>
@@ -364,6 +377,36 @@ export default function FlightRiskDashboard({
                                 </div>
                               ))}
                           </div>
+
+                          {/* Retention Plan Action */}
+                          {(!employeePlans[assessment.employee.id] || 
+                            employeePlans[assessment.employee.id].plan_type !== 'retention') && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRetentionPlanEmployee(assessment.employee);
+                                setIsRetentionModalOpen(true);
+                              }}
+                              className="mt-3 w-full px-3 py-2 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <Shield className="w-3.5 h-3.5" />
+                              Create Retention Plan
+                            </button>
+                          )}
+
+                          {employeePlans[assessment.employee.id]?.plan_type === 'retention' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRetentionPlanEmployee(assessment.employee);
+                                setIsRetentionModalOpen(true);
+                              }}
+                              className="mt-3 w-full px-3 py-2 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <Shield className="w-3.5 h-3.5" />
+                              View Retention Plan
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -392,6 +435,21 @@ export default function FlightRiskDashboard({
           onUpdateEmployee={() => {
             if (onEmployeeUpdate) onEmployeeUpdate();
           }}
+        />
+      )}
+
+      {/* Retention Plan Modal */}
+      {retentionPlanEmployee && (
+        <RetentionPlanModal
+          isOpen={isRetentionModalOpen}
+          onClose={() => {
+            setIsRetentionModalOpen(false);
+            setRetentionPlanEmployee(null);
+          }}
+          employee={retentionPlanEmployee}
+          existingPlan={employeePlans[retentionPlanEmployee.id]}
+          flightRiskScore={calculateRisk(retentionPlanEmployee).riskScore}
+          onSave={handleSaveRetentionPlan}
         />
       )}
     </div>

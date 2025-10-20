@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import { Users, CheckCircle, AlertTriangle, TrendingUp, Calendar, Target } from 'lucide-react';
 import type { Employee, Department } from '../../types';
 
@@ -10,7 +11,7 @@ interface OrganizationMetricsProps {
 interface MetricCard {
   label: string;
   value: string | number;
-  icon: React.ReactNode;
+  icon: ReactNode;
   color: string;
   bgColor: string;
   subtext?: string;

@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { X, Calendar, Clock, MapPin, Plus, Trash2, CheckCircle2, Circle, Lock, Users } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { X, Calendar, Clock, MapPin, Plus, CheckCircle2, Circle, Lock, Users, MessageSquare, Mic, MicOff, Loader2, Sparkles, UploadCloud, Tag, FileText, Trash2 } from 'lucide-react';
 import type {
   Employee,
   OneOnOneMeeting,
@@ -9,8 +10,15 @@ import type {
   OneOnOneActionItem,
   OneOnOneMeetingStatus,
   OneOnOneMeetingType,
-  OneOnOneActionItemStatus
+  OneOnOneActionItemStatus,
+  OneOnOneAgendaComment,
+  OneOnOneMeetingComment,
+  OneOnOneTranscript,
+  WorkingGenius
 } from '../types';
+import { generateOneOnOneSummary } from '../lib/anthropicService';
+import { importTranscriptFromFile, normalizeTranscriptText } from '../lib/transcriptImporter';
+import { EmployeeNameLink } from './unified';
 
 interface OneOnOneModalProps {
   isOpen: boolean;
@@ -167,6 +175,47 @@ const MEETING_TEMPLATES = {
   }
 };
 
+const WORKING_GENIUS_META: Record<WorkingGenius, { label: string; color: string; border: string; hint: string }> = {
+  wonder: {
+    label: 'Wonder',
+    color: 'bg-sky-100 text-sky-700',
+    border: 'border-sky-200',
+    hint: 'Surface big questions and explore possibilities.',
+  },
+  invention: {
+    label: 'Invention',
+    color: 'bg-purple-100 text-purple-700',
+    border: 'border-purple-200',
+    hint: 'Brainstorm solutions or new approaches.',
+  },
+  discernment: {
+    label: 'Discernment',
+    color: 'bg-emerald-100 text-emerald-700',
+    border: 'border-emerald-200',
+    hint: 'Evaluate ideas and apply gut instincts.',
+  },
+  galvanizing: {
+    label: 'Galvanizing',
+    color: 'bg-amber-100 text-amber-700',
+    border: 'border-amber-200',
+    hint: 'Rally momentum and get others moving.',
+  },
+  enablement: {
+    label: 'Enablement',
+    color: 'bg-pink-100 text-pink-700',
+    border: 'border-pink-200',
+    hint: 'Provide timely support and partnership.',
+  },
+  tenacity: {
+    label: 'Tenacity',
+    color: 'bg-orange-100 text-orange-700',
+    border: 'border-orange-200',
+    hint: 'Drive tasks to completion and ensure accountability.',
+  },
+};
+
+const WORKING_GENIUS_ORDER: WorkingGenius[] = ['wonder', 'invention', 'discernment', 'galvanizing', 'enablement', 'tenacity'];
+
 export default function OneOnOneModal({
   isOpen,
   onClose,
@@ -194,6 +243,43 @@ export default function OneOnOneModal({
   const [sharedNotes, setSharedNotes] = useState<OneOnOneSharedNote[]>([]);
   const [privateNotes, setPrivateNotes] = useState<OneOnOnePrivateNote[]>([]);
   const [actionItems, setActionItems] = useState<OneOnOneActionItem[]>([]);
+  const [agendaComments, setAgendaComments] = useState<Record<string, OneOnOneAgendaComment[]>>({});
+  const [agendaCommentDrafts, setAgendaCommentDrafts] = useState<Record<string, string>>({});
+  const [meetingComments, setMeetingComments] = useState<OneOnOneMeetingComment[]>([]);
+  const [meetingCommentDraft, setMeetingCommentDraft] = useState('');
+
+  // Transcript state
+  const [transcriptsStore, setTranscriptsStore] = useState<Record<string, OneOnOneTranscript[]>>({});
+  const [transcripts, setTranscripts] = useState<OneOnOneTranscript[]>([]);
+  const [transcriptDate, setTranscriptDate] = useState(new Date().toISOString().split('T')[0]);
+  const [transcriptTime, setTranscriptTime] = useState(new Date().toISOString().slice(11, 16));
+  const [transcriptTagsInput, setTranscriptTagsInput] = useState('');
+  const [transcriptContent, setTranscriptContent] = useState('');
+  const [transcriptFileName, setTranscriptFileName] = useState('');
+  const [transcriptDetectedFormat, setTranscriptDetectedFormat] = useState<string | null>(null);
+  const [transcriptParticipants, setTranscriptParticipants] = useState<string[]>([]);
+  const [transcriptWarnings, setTranscriptWarnings] = useState<string[]>([]);
+  const [transcriptImportWarning, setTranscriptImportWarning] = useState<string | null>(null);
+  const [isTranscriptImporting, setIsTranscriptImporting] = useState(false);
+  const [transcriptSource, setTranscriptSource] = useState<'uploaded' | 'pasted'>('pasted');
+  const transcriptFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [recordingError, setRecordingError] = useState('');
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingTimerRef = useRef<number | null>(null);
+
+  // AI summary state
+  const [summaryNotes, setSummaryNotes] = useState('');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [generatedSummary, setGeneratedSummary] = useState<string | null>(null);
+  const [generatedHighlights, setGeneratedHighlights] = useState<string[]>([]);
+  const [suggestedActions, setSuggestedActions] = useState<Array<{ title: string; owner: string; rationale: string }>>([]);
+  const [summaryError, setSummaryError] = useState('');
 
   // Form state
   const [newAgendaTitle, setNewAgendaTitle] = useState('');
@@ -203,9 +289,9 @@ export default function OneOnOneModal({
   const [newActionTitle, setNewActionTitle] = useState('');
   const [newActionAssignee, setNewActionAssignee] = useState<'manager' | 'employee'>('employee');
   const [newActionDueDate, setNewActionDueDate] = useState('');
-
-  if (!isOpen) return null;
-
+  const [newSharedNoteGeniuses, setNewSharedNoteGeniuses] = useState<WorkingGenius[]>([]);
+  const [newPrivateNoteGeniuses, setNewPrivateNoteGeniuses] = useState<WorkingGenius[]>([]);
+  const [newActionGeniuses, setNewActionGeniuses] = useState<WorkingGenius[]>([]);
   const handleCreateMeeting = () => {
     const newMeeting: OneOnOneMeeting = {
       id: `meeting-${Date.now()}`,
@@ -224,6 +310,14 @@ export default function OneOnOneModal({
 
     setMeetings([newMeeting, ...meetings]);
     setSelectedMeeting(newMeeting);
+    setTranscriptsStore(prev => ({ ...prev, [newMeeting.id]: [] }));
+    setTranscripts([]);
+    setTranscriptDate(meetingForm.meetingDate);
+    setTranscriptTime(meetingForm.meetingTime);
+    setTranscriptTagsInput('');
+    setTranscriptContent('');
+    setTranscriptFileName('');
+    setTranscriptSource('pasted');
 
     // Load template agenda if selected
     const templateAgenda: OneOnOneAgendaItem[] = [];
@@ -252,12 +346,44 @@ export default function OneOnOneModal({
     setSharedNotes([]);
     setPrivateNotes([]);
     setActionItems([]);
+    setAgendaComments({});
+    setAgendaCommentDrafts({});
+    setMeetingComments([]);
+    setMeetingCommentDraft('');
+    setGeneratedSummary(null);
+    setGeneratedHighlights([]);
+    setSuggestedActions([]);
+    setSummaryNotes('');
+    setRecordingUrl(null);
+    setRecordingError('');
+    setRecordingDuration(0);
+    setIsRecording(false);
     setView('meeting');
   };
 
   const handleOpenMeeting = (meeting: OneOnOneMeeting) => {
     setSelectedMeeting(meeting);
     // In production, fetch meeting details here
+    setTranscriptsStore(prev => (prev[meeting.id] ? prev : { ...prev, [meeting.id]: [] }));
+    const meetingTime = new Date(meeting.meeting_date);
+    setTranscriptDate(meetingTime.toISOString().split('T')[0]);
+    setTranscriptTime(meetingTime.toISOString().slice(11, 16));
+    setTranscriptTagsInput('');
+    setTranscriptContent('');
+    setTranscriptFileName('');
+    setTranscriptSource('pasted');
+    setAgendaComments({});
+    setAgendaCommentDrafts({});
+    setMeetingComments([]);
+    setMeetingCommentDraft('');
+    setGeneratedSummary(null);
+    setGeneratedHighlights([]);
+    setSuggestedActions([]);
+    setSummaryNotes('');
+    setRecordingUrl(null);
+    setRecordingError('');
+    setRecordingDuration(0);
+    setIsRecording(false);
     setView('meeting');
   };
 
@@ -303,10 +429,12 @@ export default function OneOnOneModal({
       created_by: currentUserName,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      working_genius: newSharedNoteGeniuses.length ? [...newSharedNoteGeniuses] : undefined,
     };
 
     setSharedNotes([...sharedNotes, newNote]);
     setNewSharedNote('');
+    setNewSharedNoteGeniuses([]);
   };
 
   const handleAddPrivateNote = () => {
@@ -319,11 +447,405 @@ export default function OneOnOneModal({
       created_by: currentUserName,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      working_genius: newPrivateNoteGeniuses.length ? [...newPrivateNoteGeniuses] : undefined,
     };
 
     setPrivateNotes([...privateNotes, newNote]);
     setNewPrivateNote('');
+    setNewPrivateNoteGeniuses([]);
   };
+
+  const mergeTags = (current: string, additions: string[]) => {
+    const normalized = new Set(
+      current
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(Boolean)
+    );
+    additions.forEach(tag => {
+      const cleaned = tag.trim();
+      if (cleaned) {
+        normalized.add(cleaned);
+      }
+    });
+    return Array.from(normalized).join(', ');
+  };
+
+  const handleToggleSharedNoteGenius = (noteId: string, genius: WorkingGenius) => {
+    setSharedNotes(sharedNotes.map(note =>
+      note.id === noteId
+        ? {
+            ...note,
+            working_genius: toggleGeniusSelection(note.working_genius ?? [], genius),
+            updated_at: new Date().toISOString(),
+          }
+        : note
+    ));
+  };
+
+  const handleTogglePrivateNoteGenius = (noteId: string, genius: WorkingGenius) => {
+    setPrivateNotes(privateNotes.map(note =>
+      note.id === noteId
+        ? {
+            ...note,
+            working_genius: toggleGeniusSelection(note.working_genius ?? [], genius),
+            updated_at: new Date().toISOString(),
+          }
+        : note
+    ));
+  };
+
+  const handleToggleNewSharedNoteGenius = (genius: WorkingGenius) => {
+    setNewSharedNoteGeniuses(prev => toggleGeniusSelection(prev, genius));
+  };
+
+  const handleToggleNewPrivateNoteGenius = (genius: WorkingGenius) => {
+    setNewPrivateNoteGeniuses(prev => toggleGeniusSelection(prev, genius));
+  };
+
+  const handleToggleNewActionGenius = (genius: WorkingGenius) => {
+    setNewActionGeniuses(prev => toggleGeniusSelection(prev, genius));
+  };
+
+  const humanizeFormat = (format: string) =>
+    format
+      .replace(/_/g, ' ')
+      .replace(/^[a-z]/, char => char.toUpperCase());
+
+  const resetTranscriptForm = () => {
+    setTranscriptTagsInput('');
+    setTranscriptContent('');
+    setTranscriptFileName('');
+    setTranscriptDetectedFormat(null);
+    setTranscriptParticipants([]);
+    setTranscriptWarnings([]);
+    setTranscriptImportWarning(null);
+    setTranscriptSource('pasted');
+    if (transcriptFileInputRef.current) {
+      transcriptFileInputRef.current.value = '';
+    }
+  };
+
+  const handleTranscriptFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsTranscriptImporting(true);
+    setTranscriptImportWarning(null);
+
+    try {
+      const imported = await importTranscriptFromFile(file);
+      setTranscriptContent(imported.content);
+      setTranscriptFileName(file.name);
+      setTranscriptSource('uploaded');
+      setTranscriptDetectedFormat(imported.detectedFormat);
+      setTranscriptParticipants(imported.participants);
+      setTranscriptWarnings(imported.warnings);
+      if (imported.tags.length) {
+        setTranscriptTagsInput(prev => mergeTags(prev, imported.tags));
+      }
+      setTranscriptImportWarning(imported.warnings.length ? imported.warnings.join(' ') : null);
+    } catch (error) {
+      console.error('Transcript import failed', error);
+      setTranscriptContent('');
+      setTranscriptFileName('');
+      setTranscriptDetectedFormat(null);
+      setTranscriptParticipants([]);
+      setTranscriptWarnings([]);
+      setTranscriptImportWarning('Unable to process this file. Try exporting the transcript as plain text, VTT, SRT, JSON, or DOCX.');
+    } finally {
+      setIsTranscriptImporting(false);
+      if (event.target) {
+        event.target.value = '';
+      }
+    }
+  };
+
+  const handleNormalizeTranscript = () => {
+    if (!transcriptContent.trim()) return;
+
+    const imported = normalizeTranscriptText(transcriptContent);
+    setTranscriptContent(imported.content);
+    setTranscriptDetectedFormat(imported.detectedFormat);
+    setTranscriptParticipants(imported.participants);
+    setTranscriptWarnings(imported.warnings);
+    if (imported.tags.length) {
+      setTranscriptTagsInput(prev => mergeTags(prev, imported.tags));
+    }
+    setTranscriptImportWarning(imported.warnings.length ? imported.warnings.join(' ') : null);
+  };
+
+  const handleAddTranscript = () => {
+    if (!selectedMeeting) return;
+    if (!transcriptContent.trim()) return;
+
+    const recordedAt = transcriptDate
+      ? new Date(`${transcriptDate}T${transcriptTime || '00:00'}:00`).toISOString()
+      : new Date().toISOString();
+
+    const manualTags = transcriptTagsInput
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(Boolean);
+
+    const autoTags: string[] = [];
+    if (transcriptDetectedFormat) {
+      autoTags.push(`format:${transcriptDetectedFormat}`);
+    }
+    transcriptParticipants.forEach(participant => {
+      autoTags.push(`speaker:${participant}`);
+    });
+
+    const tags = Array.from(new Set([...manualTags, ...autoTags]));
+    const warnings = transcriptWarnings.length ? [...transcriptWarnings] : [];
+
+    const newTranscript: OneOnOneTranscript = {
+      id: `transcript-${Date.now()}`,
+      meeting_id: selectedMeeting.id,
+      recorded_at: recordedAt,
+      tags,
+      content: transcriptContent.trim(),
+      source: transcriptSource,
+      file_name: transcriptSource === 'uploaded' ? transcriptFileName || undefined : undefined,
+      detected_format: transcriptDetectedFormat || undefined,
+      participants: transcriptParticipants.length ? [...transcriptParticipants] : undefined,
+      warnings: warnings.length ? warnings : undefined,
+      created_at: new Date().toISOString(),
+    };
+
+    setTranscripts(prev => {
+      const updated = [newTranscript, ...prev];
+      setTranscriptsStore(prevStore => ({
+        ...prevStore,
+        [selectedMeeting.id]: updated,
+      }));
+      return updated;
+    });
+
+    resetTranscriptForm();
+  };
+
+  const handleRemoveTranscript = (transcriptId: string) => {
+    if (!selectedMeeting) return;
+    setTranscripts(prev => {
+      const updated = prev.filter(transcript => transcript.id !== transcriptId);
+      setTranscriptsStore(prevStore => ({
+        ...prevStore,
+        [selectedMeeting.id]: updated,
+      }));
+      return updated;
+    });
+  };
+
+  const handleAddMeetingComment = () => {
+    if (!meetingCommentDraft.trim() || !selectedMeeting) return;
+
+    const comment: OneOnOneMeetingComment = {
+      id: `meeting-comment-${Date.now()}`,
+      meeting_id: selectedMeeting.id,
+      author_id: currentUserId,
+      author_name: currentUserName,
+      comment: meetingCommentDraft.trim(),
+      created_at: new Date().toISOString(),
+    };
+
+    setMeetingComments(prev => [...prev, comment]);
+    setMeetingCommentDraft('');
+  };
+
+  const handleAddAgendaComment = (agendaId: string) => {
+    if (!selectedMeeting) return;
+    const draft = agendaCommentDrafts[agendaId]?.trim() ?? '';
+    if (!draft) return;
+
+    const newComment: OneOnOneAgendaComment = {
+      id: `agenda-comment-${Date.now()}`,
+      agenda_item_id: agendaId,
+      meeting_id: selectedMeeting.id,
+      author_id: currentUserId,
+      author_name: currentUserName,
+      comment: draft,
+      created_at: new Date().toISOString(),
+    };
+
+    setAgendaComments(prev => ({
+      ...prev,
+      [agendaId]: [...(prev[agendaId] || []), newComment],
+    }));
+
+    setAgendaCommentDrafts(prev => ({
+      ...prev,
+      [agendaId]: '',
+    }));
+  };
+
+  const recordingSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+
+  const startRecording = async () => {
+    if (!recordingSupported) {
+      setRecordingError('Audio recording is not supported in this browser. Please try Chrome or Edge.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: 'audio/webm' });
+        recordingChunksRef.current = [];
+        const url = URL.createObjectURL(blob);
+        setRecordingUrl(prev => {
+          if (prev) {
+            URL.revokeObjectURL(prev);
+          }
+          return url;
+        });
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      setRecordingError('');
+      setRecordingDuration(0);
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch (error: any) {
+      console.error('Unable to start recording:', error);
+      setRecordingError(error?.message || 'Unable to access microphone.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const clearRecording = () => {
+    if (recordingUrl) {
+      URL.revokeObjectURL(recordingUrl);
+    }
+    setRecordingUrl(null);
+    setRecordingDuration(0);
+  };
+
+  const handleGenerateSummary = async () => {
+    if (!selectedMeeting) return;
+
+    setIsGeneratingSummary(true);
+    setSummaryError('');
+    try {
+      const agendaContext = agendaItems.map(item => ({
+        title: item.title,
+        description: item.description,
+        comments: (agendaComments[item.id] || []).map(comment => `${comment.author_name}: ${comment.comment}`),
+      }));
+
+      const response = await generateOneOnOneSummary({
+        managerName: currentUserName,
+        employeeName: employee.name,
+        agenda: agendaContext,
+        sharedNotes: sharedNotes.map(note => `${note.created_by}: ${note.note}`),
+        meetingComments: meetingComments.map(comment => `${comment.author_name}: ${comment.comment}`),
+        existingActionItems: actionItems.map(action => ({
+          title: action.title,
+          owner: action.assigned_to,
+        })),
+        highlights: summaryNotes.trim(),
+      });
+
+      setGeneratedSummary(response.summary);
+      setGeneratedHighlights(response.highlights || []);
+      setSuggestedActions(response.suggestedActionItems || []);
+    } catch (error: any) {
+      setSummaryError(error?.message || 'Unable to generate summary.');
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
+  const handleAdoptSuggestedAction = (index: number) => {
+    if (!selectedMeeting) return;
+    const suggestion = suggestedActions[index];
+    if (!suggestion) return;
+
+    const assignedTo = suggestion.owner.toLowerCase().includes('manager') ? currentUserName : employee.name;
+
+    const newAction: OneOnOneActionItem = {
+      id: `action-${Date.now()}-${index}`,
+      meeting_id: selectedMeeting.id,
+      title: suggestion.title,
+      description: suggestion.rationale,
+      assigned_to: assignedTo,
+      status: 'open',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    setActionItems(prev => [...prev, newAction]);
+    setSuggestedActions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  useEffect(() => {
+    if (!isRecording) {
+      if (recordingTimerRef.current) {
+        window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      return;
+    }
+
+    setRecordingDuration(0);
+    recordingTimerRef.current = window.setInterval(() => {
+      setRecordingDuration(prev => prev + 1);
+    }, 1000);
+
+    return () => {
+      if (recordingTimerRef.current) {
+        window.clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+    };
+  }, [isRecording]);
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        window.clearInterval(recordingTimerRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (recordingUrl) {
+        URL.revokeObjectURL(recordingUrl);
+      }
+    };
+  }, [recordingUrl]);
+
+  useEffect(() => {
+    if (!selectedMeeting) return;
+    const existingTranscripts = transcriptsStore[selectedMeeting.id];
+    setTranscripts(existingTranscripts ? [...existingTranscripts] : []);
+  }, [selectedMeeting, transcriptsStore]);
+
+  useEffect(() => {
+    if (!transcriptContent.trim()) {
+      setTranscriptDetectedFormat(null);
+      setTranscriptParticipants([]);
+      setTranscriptWarnings([]);
+      setTranscriptImportWarning(null);
+    }
+  }, [transcriptContent]);
+
+  if (!isOpen) return null;
 
   const handleAddActionItem = () => {
     if (!newActionTitle.trim() || !selectedMeeting) return;
@@ -337,12 +859,14 @@ export default function OneOnOneModal({
       status: 'open',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      working_genius: newActionGeniuses.length ? [...newActionGeniuses] : undefined,
     };
 
     setActionItems([...actionItems, newAction]);
     setNewActionTitle('');
     setNewActionAssignee('employee');
     setNewActionDueDate('');
+    setNewActionGeniuses([]);
   };
 
   const handleUpdateActionStatus = (actionId: string, status: OneOnOneActionItemStatus) => {
@@ -352,6 +876,19 @@ export default function OneOnOneModal({
             ...action,
             status,
             completed_at: status === 'completed' ? new Date().toISOString() : undefined,
+            updated_at: new Date().toISOString(),
+          }
+        : action
+    ));
+  };
+
+  const handleToggleActionItemGenius = (actionId: string, genius: WorkingGenius) => {
+    setActionItems(actionItems.map(action =>
+      action.id === actionId
+        ? {
+            ...action,
+            working_genius: toggleGeniusSelection(action.working_genius ?? [], genius),
+            updated_at: new Date().toISOString(),
           }
         : action
     ));
@@ -374,6 +911,63 @@ export default function OneOnOneModal({
       minute: '2-digit',
       hour12: true
     });
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
+
+  const toggleGeniusSelection = (list: WorkingGenius[], genius: WorkingGenius) =>
+    list.includes(genius) ? list.filter(item => item !== genius) : [...list, genius];
+
+  const renderGeniusSelector = (
+    selected: WorkingGenius[],
+    onToggle: (genius: WorkingGenius) => void,
+    size: 'sm' | 'md' = 'md'
+  ) => (
+    <div className="flex flex-wrap gap-2">
+      {WORKING_GENIUS_ORDER.map((genius) => {
+        const meta = WORKING_GENIUS_META[genius];
+        const active = selected.includes(genius);
+        const baseSize = size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs';
+        return (
+          <button
+            key={genius}
+            type="button"
+            onClick={() => onToggle(genius)}
+            title={meta.hint}
+            className={`rounded-full border transition focus:outline-none focus:ring-2 focus:ring-indigo-200 ${baseSize} ${
+              active
+                ? `${meta.color} ${meta.border} shadow-sm`
+                : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+            }`}
+          >
+            {meta.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const renderGeniusBadges = (selected: WorkingGenius[]) => {
+    if (!selected.length) return null;
+    return (
+      <div className="mt-2 flex flex-wrap gap-1">
+        {selected.map((genius) => {
+          const meta = WORKING_GENIUS_META[genius];
+          return (
+            <span
+              key={genius}
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.color} ${meta.border}`}
+            >
+              {meta.label}
+            </span>
+          );
+        })}
+      </div>
+    );
   };
 
   const formatFullDateTime = (dateStr: string) => {
@@ -434,7 +1028,13 @@ export default function OneOnOneModal({
             <div>
               <h2 className="text-2xl font-bold">One-on-One Meetings</h2>
               <p className="text-purple-100 text-sm">
-                {employee.name} • {employee.title || 'No Title'}
+                <EmployeeNameLink
+                  employee={employee}
+                  className="font-semibold text-white hover:text-purple-100 focus-visible:ring-white"
+                  onClick={(event) => event.stopPropagation()}
+                />
+                {' '}
+                • {employee.title || 'No Title'}
               </p>
             </div>
           </div>
@@ -479,7 +1079,12 @@ export default function OneOnOneModal({
                     No Meetings Yet
                   </h3>
                   <p className="text-gray-500 mb-6">
-                    Schedule your first one-on-one meeting with {employee.name}
+                    Schedule your first one-on-one meeting with{' '}
+                    <EmployeeNameLink
+                      employee={employee}
+                      className="font-semibold text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+                      onClick={(event) => event.stopPropagation()}
+                    />
                   </p>
                 </div>
               ) : (
@@ -758,34 +1363,70 @@ export default function OneOnOneModal({
                           No agenda items yet. Add topics to discuss.
                         </p>
                       ) : (
-                        agendaItems.map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
-                          >
-                            <button
-                              onClick={() => handleToggleAgendaItem(item.id)}
-                              className="mt-0.5 flex-shrink-0"
-                            >
-                              {item.is_completed ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                              ) : (
-                                <Circle className="w-5 h-5 text-gray-400" />
+                        agendaItems.map((item) => {
+                          const itemComments = agendaComments[item.id] || [];
+                          const commentDraft = agendaCommentDrafts[item.id] ?? '';
+
+                          return (
+                            <div key={item.id} className="space-y-3 rounded-lg bg-gray-50 p-3">
+                              <div className="flex items-start gap-3">
+                                <button
+                                  onClick={() => handleToggleAgendaItem(item.id)}
+                                  className="mt-0.5 flex-shrink-0"
+                                >
+                                  {item.is_completed ? (
+                                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                  ) : (
+                                    <Circle className="w-5 h-5 text-gray-400" />
+                                  )}
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium ${item.is_completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                                    {item.title}
+                                  </p>
+                                  {item.description && (
+                                    <p className="text-xs text-gray-600 mt-1">{item.description}</p>
+                                  )}
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Added by {item.added_by}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {itemComments.length > 0 && (
+                                <div className="space-y-2">
+                                  {itemComments.map((comment) => (
+                                    <div key={comment.id} className="rounded-md border border-gray-200 bg-white p-3 text-xs text-gray-700">
+                                      <div className="flex items-center gap-2 text-gray-500">
+                                        <MessageSquare className="h-3 w-3 text-purple-500" />
+                                        <span className="font-semibold text-gray-700">{comment.author_name}</span>
+                                        <span className="text-gray-400">{formatRelativeTime(comment.created_at)}</span>
+                                      </div>
+                                      <p className="mt-1 whitespace-pre-wrap text-gray-800">{comment.comment}</p>
+                                    </div>
+                                  ))}
+                                </div>
                               )}
-                            </button>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm font-medium ${item.is_completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                                {item.title}
-                              </p>
-                              {item.description && (
-                                <p className="text-xs text-gray-600 mt-1">{item.description}</p>
-                              )}
-                              <p className="text-xs text-gray-500 mt-1">
-                                Added by {item.added_by}
-                              </p>
+
+                              <div className="flex items-start gap-2">
+                                <textarea
+                                  value={commentDraft}
+                                  onChange={(e) => setAgendaCommentDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                  placeholder="Add a quick comment or note for this topic..."
+                                  rows={2}
+                                  className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-xs focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                                />
+                                <button
+                                  onClick={() => handleAddAgendaComment(item.id)}
+                                  disabled={!commentDraft.trim()}
+                                  className="flex-shrink-0 rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Comment
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -808,6 +1449,10 @@ export default function OneOnOneModal({
                         rows={3}
                         className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                       />
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Working Genius focus</p>
+                        {renderGeniusSelector(newSharedNoteGeniuses, handleToggleNewSharedNoteGenius)}
+                      </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">
                           {newSharedNote.length}/5000
@@ -853,15 +1498,430 @@ export default function OneOnOneModal({
                             <p className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
                               {note.note}
                             </p>
+                            {renderGeniusBadges(note.working_genius ?? [])}
+                            <div className="mt-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700 mb-1">
+                                Tag Working Genius
+                              </p>
+                              {renderGeniusSelector(note.working_genius ?? [], (genius) => handleToggleSharedNoteGenius(note.id, genius), 'sm')}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                  </div>
+                </div>
+
+                  {/* Meeting Discussion Comments */}
+                  <div className="border-2 border-gray-200 rounded-xl p-5">
+                    <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <MessageSquare className="w-5 h-5 text-indigo-500" />
+                      Meeting Discussion
+                    </h4>
+
+                    <div className="mb-4 space-y-2">
+                      <textarea
+                        value={meetingCommentDraft}
+                        onChange={(e) => setMeetingCommentDraft(e.target.value)}
+                        placeholder="Capture real-time observations, commitments, or follow-ups..."
+                        rows={3}
+                        maxLength={3000}
+                        className="w-full resize-none rounded-lg border-2 border-gray-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">{meetingCommentDraft.length}/3000</span>
+                        <button
+                          onClick={handleAddMeetingComment}
+                          disabled={!meetingCommentDraft.trim()}
+                          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                          Add Comment
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {meetingComments.length === 0 ? (
+                        <p className="text-sm text-gray-500 text-center py-4">
+                          No comments captured yet. Use this space to log key discussion moments.
+                        </p>
+                      ) : (
+                        meetingComments.map(comment => (
+                          <div key={comment.id} className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-800">
+                            <div className="mb-1 flex items-center gap-2 text-xs text-gray-500">
+                              <span className="font-semibold text-gray-700">{comment.author_name}</span>
+                              <span>·</span>
+                              <span>{formatRelativeTime(comment.created_at)}</span>
+                            </div>
+                            <p className="whitespace-pre-wrap leading-relaxed">{comment.comment}</p>
                           </div>
                         ))
                       )}
                     </div>
                   </div>
-                </div>
+              </div>
 
-                {/* Right Column: Private Notes & Action Items */}
-                <div className="space-y-6">
+              {/* Right Column: Private Notes & Action Items */}
+              <div className="space-y-6">
+                  {/* Recording & Summary */}
+                  <div className="space-y-4 rounded-xl border-2 border-purple-200 bg-purple-50/40 p-5">
+                    <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                      <Mic className="w-5 h-5 text-purple-600" />
+                      Recording & AI Summary
+                    </h4>
+
+                    <div className="space-y-3 rounded-lg border border-purple-200 bg-white p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">Live recording</p>
+                          <p className="text-xs text-gray-500">Capture the conversation for reference.</p>
+                        </div>
+                        <span className="text-sm font-semibold text-purple-600">{formatDuration(recordingDuration)}</span>
+                      </div>
+
+                      {recordingError && (
+                        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                          {recordingError}
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!isRecording ? (
+                          <button
+                            onClick={startRecording}
+                            disabled={!recordingSupported}
+                            className="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Mic className="h-4 w-4" />
+                            Start recording
+                          </button>
+                        ) : (
+                          <button
+                            onClick={stopRecording}
+                            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+                          >
+                            <MicOff className="h-4 w-4" />
+                            Stop recording
+                          </button>
+                        )}
+
+                        {recordingUrl && (
+                          <button
+                            onClick={clearRecording}
+                            className="rounded-lg border border-purple-200 px-3 py-2 text-xs font-medium text-purple-600 hover:bg-purple-100"
+                          >
+                            Remove recording
+                          </button>
+                        )}
+                      </div>
+
+                      {recordingUrl && (
+                        <audio controls className="w-full">
+                          <source src={recordingUrl} type="audio/webm" />
+                          Your browser does not support the audio element.
+                        </audio>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        Highlights or transcript snippets (optional)
+                      </label>
+                      <textarea
+                        value={summaryNotes}
+                        onChange={(e) => setSummaryNotes(e.target.value)}
+                        placeholder="Capture key quotes, decisions, or transcript excerpts to help the AI summarize."
+                        rows={3}
+                        maxLength={4000}
+                        className="w-full resize-none rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-200"
+                      />
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={handleGenerateSummary}
+                          disabled={isGeneratingSummary}
+                          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isGeneratingSummary ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                          {isGeneratingSummary ? 'Summarizing...' : 'Generate AI summary'}
+                        </button>
+                        <span className="text-xs text-gray-500">Uses agenda notes, comments, and highlights</span>
+                      </div>
+
+                      {summaryError && (
+                        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                          {summaryError}
+                        </p>
+                      )}
+
+                      {generatedSummary && (
+                        <div className="space-y-3 rounded-lg border border-indigo-200 bg-white p-4">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800">AI Summary</p>
+                            <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{generatedSummary}</p>
+                          </div>
+                          {generatedHighlights.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Highlights</p>
+                              <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                                {generatedHighlights.map((highlight, index) => (
+                                  <li key={index}>{highlight}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {suggestedActions.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Suggested action items</p>
+                              <ul className="space-y-2">
+                                {suggestedActions.map((suggestion, index) => (
+                                  <li key={`${suggestion.title}-${index}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                                    <p className="font-semibold text-gray-800">{suggestion.title}</p>
+                                    <p className="text-xs text-gray-500">Owner: {suggestion.owner}</p>
+                                    <p className="mt-1 text-xs text-gray-500">{suggestion.rationale}</p>
+                                    <button
+                                      onClick={() => handleAdoptSuggestedAction(index)}
+                                      className="mt-2 inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                      Add to action items
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Transcript Ingestion */}
+                  <div className="space-y-4 rounded-xl border-2 border-amber-200 bg-amber-50/40 p-5">
+                    <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-amber-600" />
+                      Transcript Library
+                    </h4>
+
+                    <div className="space-y-4 rounded-lg border border-amber-200 bg-white p-4">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                            Conversation date
+                          </label>
+                          <input
+                            type="date"
+                            value={transcriptDate}
+                            onChange={(event) => setTranscriptDate(event.target.value)}
+                            className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                            Time (local)
+                          </label>
+                          <input
+                            type="time"
+                            value={transcriptTime}
+                            onChange={(event) => setTranscriptTime(event.target.value)}
+                            className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                          Tags
+                        </label>
+                        <input
+                          type="text"
+                          value={transcriptTagsInput}
+                          onChange={(event) => setTranscriptTagsInput(event.target.value)}
+                          placeholder="growth, recognition, blockers"
+                          className="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                        />
+                        <p className="text-xs text-amber-700/70">Separate tags with commas to make transcripts searchable later.</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                          Transcript
+                        </label>
+                        <textarea
+                          value={transcriptContent}
+                          onChange={(event) => setTranscriptContent(event.target.value)}
+                          placeholder="Paste the meeting transcript or enter key moments..."
+                          rows={5}
+                          className="w-full resize-y rounded-lg border border-amber-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                        />
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-amber-800/70">
+                          <span>{transcriptContent.length.toLocaleString()} characters</span>
+                          {transcriptFileName && (
+                            <span className="inline-flex items-center gap-1 font-medium text-amber-700">
+                              <FileText className="h-3.5 w-3.5" />
+                              {transcriptFileName}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-2 text-xs text-amber-800/80">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleNormalizeTranscript}
+                              disabled={!transcriptContent.trim()}
+                              className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-3 py-1.5 font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Clean & detect structure
+                            </button>
+                            {transcriptDetectedFormat && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">
+                                <FileText className="h-3 w-3" />
+                                Detected {humanizeFormat(transcriptDetectedFormat!)} transcript
+                              </span>
+                            )}
+                          </div>
+
+                          {transcriptParticipants.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {transcriptParticipants.map((participant) => (
+                                <span
+                                  key={`participant-${participant}`}
+                                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700"
+                                >
+                                  <Users className="h-3 w-3" />
+                                  {participant}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {transcriptImportWarning && (
+                            <p className="rounded-md border border-amber-200 bg-amber-100/70 px-3 py-2 text-amber-800">
+                              {transcriptImportWarning}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100">
+                          <UploadCloud className="h-4 w-4" />
+                          Import from file
+                          <input
+                            ref={transcriptFileInputRef}
+                            type="file"
+                            accept=".txt,.md,.rtf,.log,.docx,.vtt,.srt,.json,.csv,.tsv"
+                            className="hidden"
+                            onChange={handleTranscriptFileSelect}
+                          />
+                        </label>
+                        {isTranscriptImporting && (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Reading file…
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={resetTranscriptForm}
+                          className="text-xs font-medium text-amber-600 underline decoration-dotted underline-offset-2 hover:text-amber-700"
+                        >
+                          Clear form
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-amber-800/70">
+                          Tag topics now so you can surface transcripts during calibration.
+                        </span>
+                        <button
+                          onClick={handleAddTranscript}
+                          disabled={isTranscriptImporting || !transcriptContent.trim()}
+                          className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add transcript entry
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {transcripts.length === 0 ? (
+                        <p className="text-sm text-amber-800/70 text-center py-4">
+                          No transcript entries yet. Paste or import conversations to keep coaching moments searchable.
+                        </p>
+                      ) : (
+                        transcripts.map((transcript) => (
+                          <div key={transcript.id} className="space-y-3 rounded-lg border border-amber-200 bg-white p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 text-xs text-gray-600">
+                                  <Calendar className="h-3.5 w-3.5" />
+                                  <span className="font-semibold text-gray-800">{formatFullDateTime(transcript.recorded_at)}</span>
+                                  <span className="text-gray-400">({formatRelativeTime(transcript.recorded_at)})</span>
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  Source: {transcript.source === 'uploaded' ? 'Uploaded file' : 'Pasted text'}
+                                  {transcript.file_name ? ` • ${transcript.file_name}` : ''}
+                                </div>
+                                {(transcript.detected_format || (transcript.participants && transcript.participants.length > 0)) && (
+                                  <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-amber-700">
+                                    {transcript.detected_format && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold">
+                                        <FileText className="h-3 w-3" />
+                                        Format: {humanizeFormat(transcript.detected_format!)}
+                                      </span>
+                                    )}
+                                    {transcript.participants?.map((participant) => (
+                                      <span
+                                        key={`${transcript.id}-participant-${participant}`}
+                                        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold"
+                                      >
+                                        <Users className="h-3 w-3" />
+                                        {participant}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => handleRemoveTranscript(transcript.id)}
+                                className="inline-flex items-center gap-1 rounded-md border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Remove
+                              </button>
+                            </div>
+
+                            {transcript.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {transcript.tags.map((tag) => (
+                                  <span
+                                    key={`${transcript.id}-${tag}`}
+                                    className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
+                                  >
+                                    <Tag className="h-3 w-3" />
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {transcript.warnings && transcript.warnings.length > 0 && (
+                              <p className="rounded-md border border-amber-200 bg-amber-100/70 px-3 py-2 text-xs text-amber-800">
+                                {transcript.warnings.join(' ')}
+                              </p>
+                            )}
+
+                            <div className="max-h-48 overflow-y-auto rounded-md border border-amber-100 bg-amber-50/60 p-3 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                              {transcript.content}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                   {/* Private Manager Notes */}
                   <div className="border-2 border-orange-200 rounded-xl p-5 bg-orange-50/30">
                     <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -880,6 +1940,10 @@ export default function OneOnOneModal({
                         rows={3}
                         className="w-full px-3 py-2 border-2 border-orange-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none bg-white"
                       />
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-500 mb-1">Working Genius focus</p>
+                        {renderGeniusSelector(newPrivateNoteGeniuses, handleToggleNewPrivateNoteGenius)}
+                      </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">
                           {newPrivateNote.length}/5000
@@ -925,6 +1989,11 @@ export default function OneOnOneModal({
                             <p className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">
                               {note.note}
                             </p>
+                            {renderGeniusBadges(note.working_genius ?? [])}
+                            <div className="mt-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-600 mb-1">Tag Working Genius</p>
+                              {renderGeniusSelector(note.working_genius ?? [], (genius) => handleTogglePrivateNoteGenius(note.id, genius), 'sm')}
+                            </div>
                           </div>
                         ))
                       )}
@@ -963,6 +2032,10 @@ export default function OneOnOneModal({
                           onChange={(e) => setNewActionDueDate(e.target.value)}
                           className="px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-green-600 mb-1">Working Genius driver</p>
+                        {renderGeniusSelector(newActionGeniuses, handleToggleNewActionGenius)}
                       </div>
                       <button
                         onClick={handleAddActionItem}
@@ -1006,6 +2079,11 @@ export default function OneOnOneModal({
                               {action.due_date && (
                                 <span>Due: {new Date(action.due_date).toLocaleDateString()}</span>
                               )}
+                            </div>
+                            {renderGeniusBadges(action.working_genius ?? [])}
+                            <div className="mt-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-green-700 mb-1">Tag Working Genius</p>
+                              {renderGeniusSelector(action.working_genius ?? [], (genius) => handleToggleActionItemGenius(action.id, genius), 'sm')}
                             </div>
                           </div>
                         ))

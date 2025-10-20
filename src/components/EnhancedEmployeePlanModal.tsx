@@ -38,6 +38,7 @@ import {
 import type { PerformanceReview } from './PerformanceReviewModal';
 import { analyzePerformanceReview } from '../lib/reviewAnalyzer';
 import { composeReviewNarrative } from '../lib/reviewTextFormatter';
+import { EmployeeNameLink } from './unified';
 
 interface EnhancedEmployeePlanModalProps {
   isOpen: boolean;
@@ -90,6 +91,9 @@ export default function EnhancedEmployeePlanModal({
   existingPlan,
   performanceReviews = [],
 }: EnhancedEmployeePlanModalProps) {
+  const [planType, setPlanType] = useState<'development' | 'performance_improvement' | 'retention' | 'succession'>(
+    existingPlan?.plan_type || 'development'
+  );
   const [title, setTitle] = useState(existingPlan?.title || '');
   const [actionItems, setActionItems] = useState<ActionItem[]>(existingPlan?.action_items || []);
   const [objectives, setObjectives] = useState<string[]>(existingPlan?.objectives || []);
@@ -271,7 +275,15 @@ export default function EnhancedEmployeePlanModal({
 
   const renderChooseStep = () => (
     <div className="p-8">
-      <h3 className="text-2xl font-bold text-gray-900 mb-4">How do you want to build {employee.name}'s plan?</h3>
+      <h3 className="text-2xl font-bold text-gray-900 mb-4">
+        How do you want to build{' '}
+        <EmployeeNameLink
+          employee={employee}
+          className="text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+          onClick={(event) => event.stopPropagation()}
+        />
+        's plan?
+      </h3>
       <p className="text-gray-600 mb-8">
         Choose whether to start from a recent performance review or craft a plan manually. You can always customize the plan afterward.
       </p>
@@ -289,7 +301,13 @@ export default function EnhancedEmployeePlanModal({
           </div>
           <h4 className="text-lg font-semibold text-gray-900 mb-2">Build Manually</h4>
           <p className="text-sm text-gray-600">
-            Start from our recommended objectives and action items tailored to {employee.name}'s 9-box placement.
+            Start from our recommended objectives and action items tailored to{' '}
+            <EmployeeNameLink
+              employee={employee}
+              className="text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+              onClick={(event) => event.stopPropagation()}
+            />
+            's 9-box placement.
           </p>
         </button>
 
@@ -563,7 +581,7 @@ export default function EnhancedEmployeePlanModal({
   const handleSave = () => {
     const plan: Partial<EmployeePlan> = {
       employee_id: employee.id,
-      plan_type: 'development',
+      plan_type: planType,
       title,
       objectives,
       action_items: actionItems,
@@ -609,7 +627,13 @@ export default function EnhancedEmployeePlanModal({
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <div className="flex items-center space-x-3 mb-2">
-                <h2 className="text-2xl font-bold">{employee.name}</h2>
+                <h2 className="text-2xl font-bold">
+                  <EmployeeNameLink
+                    employee={employee}
+                    className="text-white hover:text-blue-100 focus-visible:ring-white"
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </h2>
                 {department && (
                   <span
                     className="px-3 py-1 rounded-full text-xs font-semibold text-white border-2 border-white/30"
@@ -685,10 +709,36 @@ export default function EnhancedEmployeePlanModal({
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Plan Type Selector */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Plan Type
+            </label>
+            <select
+              value={planType}
+              onChange={(e) => setPlanType(e.target.value as typeof planType)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="development">Development Plan</option>
+              <option value="performance_improvement">Performance Improvement Plan</option>
+              <option value="retention">Retention Plan</option>
+              <option value="succession">Succession Plan</option>
+            </select>
+            {planType === 'retention' && (
+              <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                Note: For detailed retention planning, use the dedicated Retention Plan modal from the Flight Risk dashboard.
+                This simplified plan will track basic retention objectives.
+              </p>
+            )}
+          </div>
+
           {/* Plan Title */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Development Plan Title
+              {planType === 'retention' ? 'Retention Plan Title' :
+               planType === 'performance_improvement' ? 'PIP Title' :
+               planType === 'succession' ? 'Succession Plan Title' :
+               'Development Plan Title'}
             </label>
             <input
               type="text"

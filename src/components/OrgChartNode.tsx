@@ -3,6 +3,7 @@ import { Handle, Position } from 'reactflow';
 import { Building2, Users, Tag } from 'lucide-react';
 import type { MatrixEmployee } from '../types';
 import { orgChartNodeStyle } from '../lib/designTokens';
+import { EmployeeNameLink } from './unified';
 
 interface OrgChartNodeProps {
   data: {
@@ -89,16 +90,23 @@ function OrgChartNode({ data, isConnectable, selected }: OrgChartNodeProps) {
 
         {/* Details */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">{employee.name}</p>
+        <EmployeeNameLink
+          employee={{ id: employee.id, name: employee.name }}
+          className="text-sm font-semibold text-gray-900 whitespace-normal leading-tight hover:text-blue-600 focus-visible:ring-blue-500"
+          onClick={(event) => {
+            event.stopPropagation();
+            onNodeClick?.(employee);
+          }}
+        />
           {employee.title && (
-            <p className="text-xs text-gray-600 truncate mb-2">{employee.title}</p>
+            <p className="text-xs text-gray-600 whitespace-normal mb-2">{employee.title}</p>
           )}
 
           {/* Department */}
           {employee.department && (
             <div className="flex items-center mb-2">
               <Building2 className="w-3 h-3 text-gray-400 mr-1 flex-shrink-0" />
-              <span className="text-xs text-gray-600 truncate">{employee.department.name}</span>
+              <span className="text-xs text-gray-600 whitespace-normal">{employee.department.name}</span>
             </div>
           )}
 

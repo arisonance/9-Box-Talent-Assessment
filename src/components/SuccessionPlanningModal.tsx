@@ -564,6 +564,304 @@ export default function SuccessionPlanningModal({
     );
   };
 
+  const renderAllCandidates = () => {
+    if (loading) {
+      return <div className="text-center py-12 text-gray-500">Loading candidates...</div>;
+    }
+
+    // Flatten all candidates from all roles
+    const allCandidates = roles.flatMap(role =>
+      (role.candidates || []).map(candidate => ({
+        ...candidate,
+        role_title: role.role_title,
+        role_level: role.level,
+        role_department: role.department,
+        role_health: role.succession_health_score
+      }))
+    );
+
+    if (allCandidates.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Candidates Identified</h3>
+          <p className="text-gray-600 mb-6">Start identifying potential successors for critical roles</p>
+        </div>
+      );
+    }
+
+    // Group by readiness tier
+    const groupedByReadiness = {
+      ready_now: allCandidates.filter(c => c.readiness_tier === 'ready_now'),
+      ready_soon: allCandidates.filter(c => c.readiness_tier === 'ready_soon'),
+      future_pipeline: allCandidates.filter(c => c.readiness_tier === 'future_pipeline'),
+      emergency_backup: allCandidates.filter(c => c.readiness_tier === 'emergency_backup')
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Summary Stats */}
+        <div className="grid grid-cols-4 gap-4">
+          <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200">
+            <div className="text-3xl font-bold text-green-600 mb-1">
+              {groupedByReadiness.ready_now.length}
+            </div>
+            <div className="text-sm text-gray-700 font-medium">Ready Now</div>
+            <div className="text-xs text-gray-600 mt-1">&lt;6 months</div>
+          </div>
+          <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+            <div className="text-3xl font-bold text-blue-600 mb-1">
+              {groupedByReadiness.ready_soon.length}
+            </div>
+            <div className="text-sm text-gray-700 font-medium">Ready Soon</div>
+            <div className="text-xs text-gray-600 mt-1">1-2 years</div>
+          </div>
+          <div className="bg-purple-50 p-4 rounded-lg border-2 border-purple-200">
+            <div className="text-3xl font-bold text-purple-600 mb-1">
+              {groupedByReadiness.future_pipeline.length}
+            </div>
+            <div className="text-sm text-gray-700 font-medium">Future Pipeline</div>
+            <div className="text-xs text-gray-600 mt-1">3-5 years</div>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg border-2 border-orange-200">
+            <div className="text-3xl font-bold text-orange-600 mb-1">
+              {groupedByReadiness.emergency_backup.length}
+            </div>
+            <div className="text-sm text-gray-700 font-medium">Emergency Backup</div>
+            <div className="text-xs text-gray-600 mt-1">Interim coverage</div>
+          </div>
+        </div>
+
+        {/* Ready Now Candidates */}
+        {groupedByReadiness.ready_now.length > 0 && (
+          <div className="bg-white rounded-xl border-2 border-green-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <CheckCircle2 className="w-6 h-6 text-green-600" />
+              <h3 className="text-lg font-bold text-gray-900">Ready Now (&lt;6 months)</h3>
+              <span className="px-2 py-1 bg-green-100 text-green-800 text-sm font-semibold rounded">
+                {groupedByReadiness.ready_now.length} candidates
+              </span>
+            </div>
+            <div className="space-y-3">
+              {groupedByReadiness.ready_now.map(candidate => (
+                <div key={candidate.id} className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <User className="w-5 h-5 text-green-600" />
+                        <span className="text-lg font-bold text-gray-900">{candidate.employee_name}</span>
+                        {candidate.readiness_percentage !== undefined && (
+                          <span className="px-3 py-1 bg-green-600 text-white text-sm font-bold rounded">
+                            {candidate.readiness_percentage}% Ready
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-700 mb-2">
+                        <strong>Current:</strong> {candidate.current_title}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                        <ArrowRight className="w-4 h-4 text-green-600" />
+                        <strong>Target:</strong> {candidate.role_title} ({candidate.role_department})
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded ml-2">
+                          {getLevelLabel(candidate.role_level)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {candidate.strengths && (
+                    <div className="mb-2 p-3 bg-white rounded border border-green-200">
+                      <div className="text-xs font-semibold text-green-900 mb-1 flex items-center gap-2">
+                        <Award className="w-3 h-3" />
+                        Strengths
+                      </div>
+                      <div className="text-sm text-gray-700">{candidate.strengths}</div>
+                    </div>
+                  )}
+
+                  {candidate.recommendation && (
+                    <div className="mb-2 p-3 bg-white rounded border border-green-200">
+                      <div className="text-xs font-semibold text-blue-900 mb-1">💼 Recommendation</div>
+                      <div className="text-sm text-gray-700">{candidate.recommendation}</div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-6 text-sm text-gray-600 pt-3 border-t border-green-200">
+                    <div>
+                      <strong>Stretch Assignments:</strong> {candidate.completed_stretch_assignments}
+                    </div>
+                    {candidate.proven_in_similar_role && (
+                      <div className="flex items-center gap-1 text-green-700 font-semibold">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Proven in similar role
+                      </div>
+                    )}
+                    {candidate.completed_rotations && candidate.completed_rotations.length > 0 && (
+                      <div>
+                        <strong>Rotations:</strong> {candidate.completed_rotations.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Ready Soon Candidates */}
+        {groupedByReadiness.ready_soon.length > 0 && (
+          <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Clock className="w-6 h-6 text-blue-600" />
+              <h3 className="text-lg font-bold text-gray-900">Ready Soon (1-2 years)</h3>
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded">
+                {groupedByReadiness.ready_soon.length} candidates
+              </span>
+            </div>
+            <div className="space-y-3">
+              {groupedByReadiness.ready_soon.map(candidate => (
+                <div key={candidate.id} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <User className="w-5 h-5 text-blue-600" />
+                        <span className="text-lg font-bold text-gray-900">{candidate.employee_name}</span>
+                        {candidate.readiness_percentage !== undefined && (
+                          <span className="px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded">
+                            {candidate.readiness_percentage}% Ready
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-700 mb-2">
+                        <strong>Current:</strong> {candidate.current_title}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                        <ArrowRight className="w-4 h-4 text-blue-600" />
+                        <strong>Target:</strong> {candidate.role_title} ({candidate.role_department})
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded ml-2">
+                          {getLevelLabel(candidate.role_level)}
+                        </span>
+                      </div>
+                      {candidate.estimated_ready_date && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Calendar className="w-4 h-4 text-blue-600" />
+                          <strong>Est. Ready:</strong> {formatDate(candidate.estimated_ready_date)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {candidate.strengths && (
+                    <div className="mb-2 p-3 bg-white rounded border border-blue-200">
+                      <div className="text-xs font-semibold text-blue-900 mb-1 flex items-center gap-2">
+                        <Award className="w-3 h-3" />
+                        Strengths
+                      </div>
+                      <div className="text-sm text-gray-700">{candidate.strengths}</div>
+                    </div>
+                  )}
+
+                  {candidate.development_needs && (
+                    <div className="mb-2 p-3 bg-yellow-50 rounded border border-yellow-200">
+                      <div className="text-xs font-semibold text-yellow-900 mb-1 flex items-center gap-2">
+                        <Target className="w-3 h-3" />
+                        Development Needs
+                      </div>
+                      <div className="text-sm text-gray-700">{candidate.development_needs}</div>
+                    </div>
+                  )}
+
+                  {candidate.concerns && (
+                    <div className="mb-2 p-3 bg-orange-50 rounded border border-orange-200">
+                      <div className="text-xs font-semibold text-orange-900 mb-1 flex items-center gap-2">
+                        <AlertTriangle className="w-3 h-3" />
+                        Concerns
+                      </div>
+                      <div className="text-sm text-gray-700">{candidate.concerns}</div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-6 text-sm text-gray-600 pt-3 border-t border-blue-200">
+                    <div>
+                      <strong>Stretch Assignments:</strong> {candidate.completed_stretch_assignments}
+                    </div>
+                    {candidate.completed_rotations && candidate.completed_rotations.length > 0 && (
+                      <div>
+                        <strong>Rotations:</strong> {candidate.completed_rotations.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Future Pipeline Candidates */}
+        {groupedByReadiness.future_pipeline.length > 0 && (
+          <div className="bg-white rounded-xl border-2 border-purple-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
+              <h3 className="text-lg font-bold text-gray-900">Future Pipeline (3-5 years)</h3>
+              <span className="px-2 py-1 bg-purple-100 text-purple-800 text-sm font-semibold rounded">
+                {groupedByReadiness.future_pipeline.length} candidates
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {groupedByReadiness.future_pipeline.map(candidate => (
+                <div key={candidate.id} className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <User className="w-4 h-4 text-purple-600" />
+                    <span className="font-bold text-gray-900">{candidate.employee_name}</span>
+                  </div>
+                  <div className="text-sm text-gray-700 mb-1">
+                    <strong>Current:</strong> {candidate.current_title}
+                  </div>
+                  <div className="text-sm text-gray-600 mb-2">
+                    <strong>Target:</strong> {candidate.role_title}
+                  </div>
+                  {candidate.readiness_percentage !== undefined && (
+                    <div className="text-xs text-gray-600">
+                      <strong>Readiness:</strong> {candidate.readiness_percentage}%
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Emergency Backup Candidates */}
+        {groupedByReadiness.emergency_backup.length > 0 && (
+          <div className="bg-white rounded-xl border-2 border-orange-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Shield className="w-6 h-6 text-orange-600" />
+              <h3 className="text-lg font-bold text-gray-900">Emergency Backup</h3>
+              <span className="px-2 py-1 bg-orange-100 text-orange-800 text-sm font-semibold rounded">
+                {groupedByReadiness.emergency_backup.length} candidates
+              </span>
+            </div>
+            <div className="space-y-2">
+              {groupedByReadiness.emergency_backup.map(candidate => (
+                <div key={candidate.id} className="p-3 bg-orange-50 rounded-lg border border-orange-200 flex items-center justify-between">
+                  <div>
+                    <div className="font-bold text-gray-900">{candidate.employee_name}</div>
+                    <div className="text-sm text-gray-600">
+                      {candidate.current_title} → {candidate.role_title}
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 bg-orange-600 text-white text-xs font-semibold rounded">
+                    Interim Coverage
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderAnalyticsView = () => {
     if (!analytics || loading) {
       return <div className="text-center py-12 text-gray-500">Loading analytics...</div>;
@@ -928,11 +1226,7 @@ export default function SuccessionPlanningModal({
         <div className="flex-1 overflow-y-auto p-6">
           {viewMode === 'dashboard' && renderDashboard()}
           {viewMode === 'roles' && renderRolesList()}
-          {viewMode === 'candidates' && (
-            <div className="text-center py-12 text-gray-500">
-              All Candidates view - Coming soon
-            </div>
-          )}
+          {viewMode === 'candidates' && renderAllCandidates()}
           {viewMode === 'analytics' && renderAnalyticsView()}
         </div>
       </div>

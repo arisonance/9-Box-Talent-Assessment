@@ -24,6 +24,18 @@ export function initializeAnthropic(key?: string) {
   return !!anthropic;
 }
 
+export function getAnthropicClient(): Anthropic {
+  if (!anthropic && apiKey) {
+    initializeAnthropic();
+  }
+
+  if (!anthropic) {
+    throw new Error('Anthropic API not configured. Set VITE_ANTHROPIC_API_KEY in your environment.');
+  }
+
+  return anthropic;
+}
+
 export interface AIAnalysisResult {
   employeeName: string;
   title: string;
@@ -155,4 +167,195 @@ IMPORTANT GUIDELINES:
 
 export function isAnthropicConfigured(): boolean {
   return !!anthropic || !!apiKey;
+}
+
+export type ReviewSectionKey = 'accomplishments' | 'growth' | 'support';
+
+export interface ReviewSectionDraftRequest {
+  section: ReviewSectionKey;
+  reviewType: 'self' | 'manager';
+  reviewerName: string;
+  employee: {
+    name: string;
+    title?: string | null;
+    department?: string | null;
+  };
+  voiceNotes: string[];
+  manualNotes?: string;
+  existingText?: string;
+}
+
+const SECTION_FOCUS: Record<ReviewSectionKey, { label: string; guidance: string }> = {
+  accomplishments: {
+    label: 'Accomplishments, Impact & OKRs',
+    guidance: 'Highlight measurable outcomes, impact on OKRs, cross-team collaboration, and reflections on what enabled results. Reference concrete wins, metrics, or stakeholder feedback when available.'
+  },
+  growth: {
+    label: 'Growth & Development',
+    guidance: 'Capture how the person has developed, lessons learned, and the 1-2 most important focus areas for growth. Balance strengths gained with candid opportunities that will elevate future impact.'
+  },
+  support: {
+    label: 'Support & Feedback',
+    guidance: 'Outline the support, resources, or feedback needed (for self reviews) or what the manager/team will provide (for manager reviews). Include specific actions, timing, and how support ties to OKRs.'
+  },
+};
+
+export async function draftReviewSectionWithAI(request: ReviewSectionDraftRequest): Promise<string> {
+  if (!anthropic) {
+    throw new Error('Anthropic API not initialized. Please provide an API key.');
+  }
+
+  const { section, reviewType, reviewerName, employee, voiceNotes, manualNotes, existingText } = request;
+  const sectionConfig = SECTION_FOCUS[section];
+
+  const voiceNoteSummary = voiceNotes.length > 0
+    ? voiceNotes.map((note, index) => `${index + 1}. ${note}`).join('\n')
+    : 'None provided.';
+
+  const prompt = `You are helping draft the "${sectionConfig.label}" portion of a ${reviewType === 'self' ? 'self' : 'manager'} performance review for ${employee.name}${employee.title ? ` (${employee.title})` : ''}${employee.department ? ` in the ${employee.department} team` : ''}.
+
+Use the reviewer input to craft clear, professional copy that can be pasted directly into a performance review system.
+
+GUIDELINES:
+1. Tone should be supportive, specific, and business-appropriate.
+2. Follow this focus: ${sectionConfig.guidance}
+3. If details are sparse, infer reasonable specifics, but do not fabricate data that contradicts the supplied notes.
+4. Keep the response to 2 short paragraphs (or 1 paragraph plus a concise bullet list when helpful).
+5. Do not return Markdown or headings—plain text only.
+
+CONTEXT PROVIDED BY ${reviewerName.toUpperCase()}:
+- Existing text (if any): ${existingText && existingText.trim().length > 0 ? existingText : 'None'}
+- Manual notes: ${manualNotes && manualNotes.trim().length > 0 ? manualNotes : 'None'}
+- Voice note transcript:
+${voiceNoteSummary}
+
+Now write the polished review content:`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 800,
+      temperature: 0.6,
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    });
+
+    const content = response.content[0];
+    if (content.type === 'text') {
+      return content.text.trim();
+    }
+
+    throw new Error('Unexpected response format from Claude');
+  } catch (error: unknown) {
+    console.error('Error drafting review section with AI:', error);
+    throw new Error('Unable to generate draft right now. Please try again.');
+  }
+}
+
+export interface OneOnOneSummaryRequest {
+  managerName: string;
+  employeeName: string;
+  agenda: Array<{
+    title: string;
+    description?: string;
+    comments: string[];
+  }>;
+  sharedNotes: string[];
+  meetingComments: string[];
+  existingActionItems: Array<{ title: string; owner: string }>;
+  highlights?: string;
+}
+
+export interface OneOnOneSummaryResponse {
+  summary: string;
+  highlights: string[];
+  suggestedActionItems: Array<{
+    title: string;
+    owner: string;
+    rationale: string;
+  }>;
+  tone: 'positive' | 'neutral' | 'caution';
+}
+
+export async function generateOneOnOneSummary(request: OneOnOneSummaryRequest): Promise<OneOnOneSummaryResponse> {
+  if (!anthropic) {
+    throw new Error('Anthropic API not initialized. Please provide an API key.');
+  }
+
+  const prompt = `You are assisting a manager after a 1:1 with ${request.employeeName}. Use the meeting context to produce a clear summary and identify action items.
+
+MEETING CONTEXT
+- Manager: ${request.managerName}
+- Employee: ${request.employeeName}
+- Agenda Items & Comments:
+${request.agenda.map((item, index) => {
+    const comments = item.comments.length > 0 ? item.comments.map(comment => `      - ${comment}`).join('\n') : '      - (no comments logged)';
+    return `  ${index + 1}. ${item.title}${item.description ? ` — ${item.description}` : ''}\n${comments}`;
+  }).join('\n')}
+
+- Shared Notes:
+${request.sharedNotes.length > 0 ? request.sharedNotes.map(note => `  - ${note}`).join('\n') : '  (none logged)'}
+
+- Live Meeting Comments:
+${request.meetingComments.length > 0 ? request.meetingComments.map(comment => `  - ${comment}`).join('\n') : '  (none logged)'}
+
+- Existing Action Items:
+${request.existingActionItems.length > 0 ? request.existingActionItems.map(item => `  - ${item.title} (owner: ${item.owner})`).join('\n') : '  (none yet)'}
+
+${request.highlights?.trim() ? `Manager Highlights:\n${request.highlights.trim()}` : ''}
+
+Return JSON with:
+{
+  "summary": "2 short paragraphs synthesizing discussion",
+  "highlights": ["3 key themes"],
+  "suggestedActionItems": [
+    {
+      "title": "Action title",
+      "owner": "Manager" | "Employee",
+      "rationale": "1 sentence"
+    }
+  ],
+  "tone": "positive" | "neutral" | "caution"
+}
+
+Do not include markdown fences.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1200,
+      temperature: 0.5,
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    });
+
+    const content = response.content[0];
+    if (content.type === 'text') {
+      let text = content.text.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      }
+
+      const parsed = JSON.parse(text);
+      return {
+        summary: parsed.summary ?? 'Summary unavailable.',
+        highlights: parsed.highlights ?? [],
+        suggestedActionItems: parsed.suggestedActionItems ?? [],
+        tone: parsed.tone ?? 'neutral',
+      };
+    }
+
+    throw new Error('Unexpected response format from Claude');
+  } catch (error: unknown) {
+    console.error('Error generating 1:1 summary:', error);
+    throw new Error('Unable to generate summary right now. Please try again.');
+  }
 }

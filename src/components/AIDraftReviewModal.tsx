@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Sparkles, Loader, FileText, MessageSquare, Users, ClipboardList } from 'lucide-react';
-import type { Employee, ManagerNote, OneOnOneMeetingWithDetails } from '../types';
-import Anthropic from '@anthropic-ai/sdk';
+import { X, Mic, MicOff, Sparkles, Loader, FileText, MessageSquare, ClipboardList } from 'lucide-react';
+import type { Employee } from '../types';
+import { getAnthropicClient, isAnthropicConfigured } from '../lib/anthropicService';
+import { EmployeeNameLink } from './unified';
 
 interface AIDraftReviewModalProps {
   isOpen: boolean;
@@ -28,9 +29,9 @@ export default function AIDraftReviewModal({
   const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>([]);
   const [manualInput, setManualInput] = useState('');
   const [isDrafting, setIsDrafting] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [draftedReview, setDraftedReview] = useState('');
+  const [anthropicWarning, setAnthropicWarning] = useState<string | null>(null);
+  const anthropicAvailable = isAnthropicConfigured();
 
   const recognitionRef = useRef<any>(null);
 
@@ -66,14 +67,12 @@ export default function AIDraftReviewModal({
       recognitionRef.current = recognition;
     }
 
-    // Load API key from local storage
-    const savedKey = localStorage.getItem('anthropic_api_key');
-    if (savedKey) {
-      setApiKey(savedKey);
+    if (!anthropicAvailable) {
+      setAnthropicWarning('Anthropic API key not configured. Add VITE_ANTHROPIC_API_KEY to your environment to enable AI drafting.');
     } else {
-      setShowApiKeyInput(true);
+      setAnthropicWarning(null);
     }
-  }, []);
+  }, [anthropicAvailable]);
 
   const startRecording = () => {
     if (recognitionRef.current) {
@@ -95,27 +94,18 @@ export default function AIDraftReviewModal({
     setVoiceNotes(prev => prev.filter(note => note.id !== id));
   };
 
-  const saveApiKey = () => {
-    if (apiKey.trim()) {
-      localStorage.setItem('anthropic_api_key', apiKey.trim());
-      setShowApiKeyInput(false);
-    }
-  };
-
   const draftReview = async () => {
-    if (!apiKey) {
-      setShowApiKeyInput(true);
+    if (!anthropicAvailable) {
+      setAnthropicWarning('Anthropic API key not configured. Add VITE_ANTHROPIC_API_KEY to your environment to enable AI drafting.');
       return;
     }
 
     setIsDrafting(true);
     setDraftedReview('');
+    setAnthropicWarning(null);
 
     try {
-      const anthropic = new Anthropic({
-        apiKey: apiKey,
-        dangerouslyAllowBrowser: true
-      });
+      const anthropic = getAnthropicClient();
 
       // Aggregate all data sources
       const contextData = {
@@ -150,6 +140,8 @@ export default function AIDraftReviewModal({
       };
 
       const prompt = `You are drafting a performance review for ${employee.name} (${employee.title || 'Employee'}) at Sonance, a premium audio company.
+
+MANAGER: ${managerName}
 
 CONTEXT ABOUT THE EMPLOYEE:
 ${JSON.stringify(contextData, null, 2)}
@@ -199,7 +191,8 @@ Write the review now:`;
       }
     } catch (error: any) {
       console.error('Error drafting review:', error);
-      alert(`Failed to draft review: ${error.message}`);
+      const message = error instanceof Error ? error.message : 'Failed to draft review.';
+      setAnthropicWarning(message);
     } finally {
       setIsDrafting(false);
     }
@@ -223,7 +216,14 @@ Write the review now:`;
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">AI-Powered Review Draft</h2>
-              <p className="text-sm text-gray-600">For {employee.name}</p>
+              <p className="text-sm text-gray-600">
+                For{' '}
+                <EmployeeNameLink
+                  employee={employee}
+                  className="font-semibold text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -231,28 +231,9 @@ Write the review now:`;
           </button>
         </div>
 
-        {/* API Key Input */}
-        {showApiKeyInput && (
-          <div className="p-6 bg-yellow-50 border-b border-yellow-200">
-            <h3 className="text-sm font-semibold text-yellow-900 mb-2">Anthropic API Key Required</h3>
-            <div className="flex space-x-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="flex-1 px-3 py-2 border border-yellow-300 rounded text-sm"
-              />
-              <button
-                onClick={saveApiKey}
-                className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-medium"
-              >
-                Save Key
-              </button>
-            </div>
-            <p className="text-xs text-yellow-700 mt-1">
-              Your API key will be saved in browser storage for future use.
-            </p>
+        {anthropicWarning && (
+          <div className="border-b border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
+            {anthropicWarning}
           </div>
         )}
 

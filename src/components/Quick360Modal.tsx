@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Send, Plus, Trash2, Edit2, Check, Mail, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Employee } from '../types';
-import { useToast } from './unified';
+import { useToast, EmployeeNameLink } from './unified';
 import {
   QUESTION_LIBRARY,
   DEFAULT_QUESTION_IDS,
@@ -262,7 +262,13 @@ export default function Quick360Modal({
         <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-purple-600">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">360° Feedback for {employee.name}</h2>
+              <h2 className="text-xl font-bold text-white">360° Feedback for 
+                <EmployeeNameLink
+                  employee={employee}
+                  className="font-semibold text-white hover:text-blue-100 focus-visible:ring-white"
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </h2>
               <p className="text-blue-100 text-sm mt-0.5">{employee.title}</p>
             </div>
             <button onClick={handleClose} className="text-white hover:text-gray-200 transition-colors">

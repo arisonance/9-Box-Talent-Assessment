@@ -7,6 +7,8 @@ interface Tab {
   icon: ComponentType<{ className?: string }>;
   count?: number;
   badge?: ReactNode;
+  tooltip?: string;
+  domId?: string;
 }
 
 interface NavigationTabsProps {
@@ -34,6 +36,8 @@ export default function NavigationTabs({
           return (
             <button
               key={tab.id}
+              id={tab.domId}
+              title={tab.tooltip}
               onClick={() => onTabChange(tab.id)}
               className={`
                 flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all
@@ -70,6 +74,8 @@ export default function NavigationTabs({
         return (
           <button
             key={tab.id}
+            id={tab.domId}
+            title={tab.tooltip}
             onClick={() => onTabChange(tab.id)}
             className={`
               flex items-center gap-2 px-4 py-3 border-b-2 text-sm font-medium transition-colors

@@ -12,6 +12,7 @@ interface CellDetailModalProps {
   onClose: () => void;
   onNavigate: (direction: 'prev' | 'next') => void;
   onEmployeeUpdate?: () => void;
+  onCardClick?: (employee: Employee) => void;
 }
 
 export default function CellDetailModal({
@@ -23,6 +24,7 @@ export default function CellDetailModal({
   onClose,
   onNavigate,
   onEmployeeUpdate,
+  onCardClick,
 }: CellDetailModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -261,6 +263,7 @@ export default function CellDetailModal({
                       employee={employee}
                       department={getDepartment(employee)}
                       showMenu={false}
+                      onCardClick={onCardClick}
                     />
                   ))}
                 </div>

@@ -4,7 +4,10 @@ export { default as NavigationTabs } from './NavigationTabs';
 export { default as ModalLayout } from './ModalLayout';
 export { default as EmptyState } from './EmptyState';
 export { default as StatCard } from './StatCard';
-export { ToastProvider, useToast } from './ToastContext';
+export { default as EmployeeNameLink } from './EmployeeNameLink';
+
+// Re-export useToast from TalentAppContext for backwards compatibility
+export { useToast } from '../../context/TalentAppContext';
 
 // Badge system exports
 export {

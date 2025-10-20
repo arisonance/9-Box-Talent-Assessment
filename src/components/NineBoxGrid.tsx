@@ -12,7 +12,7 @@ import {
 import { Download, RotateCcw, Users, Target, FileText, Filter, X, ClipboardList, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getPerformancePotentialFromPosition } from '../lib/utils';
-import type { Employee, Department, UserRole } from '../types';
+import type { Employee, Department, UserRole, Performance, Potential } from '../types';
 import type { PerformanceReview } from './PerformanceReviewModal';
 import { useBoxDefinitions } from '../hooks/useBoxDefinitions';
 import { useToast, Badge } from './unified';
@@ -24,6 +24,8 @@ import EnhancedEmployeePlanModal from './EnhancedEmployeePlanModal';
 import AddEmployeeWithReviewModal from './AddEmployeeWithReviewModal';
 import EmployeeDetailModal from './EmployeeDetailModal';
 import Quick360Modal from './Quick360Modal';
+import { getPlacementTip } from './AICoachMicroPanel';
+import { useUnifiedAICoach } from '../context/UnifiedAICoachContext';
 
 interface NineBoxGridProps {
   employees: Employee[];
@@ -36,6 +38,13 @@ interface NineBoxGridProps {
   organizationId: string;
   performanceReviews?: Record<string, { self?: PerformanceReview; manager?: PerformanceReview }>;
   onReviewSave?: (review: PerformanceReview) => void;
+  onPlacementSuggestion?: (payload: {
+    employeeId: string;
+    performance: Performance;
+    potential: Potential;
+    reasoning: string;
+    confidence?: number;
+  }) => void;
 }
 
 type FocusFilter = 'all' | 'pending-review' | 'misaligned' | 'needs-plan';
@@ -76,8 +85,10 @@ export default function NineBoxGrid({
   organizationId,
   performanceReviews = {},
   onReviewSave,
+  onPlacementSuggestion,
 }: NineBoxGridProps) {
   const { notify } = useToast();
+  const { addSuggestion } = useUnifiedAICoach();
   const [draggedEmployee, setDraggedEmployee] = useState<Employee | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -386,6 +397,21 @@ export default function NineBoxGrid({
 
       // Pass the updated employee to parent
       onEmployeeUpdate(updatedEmployee);
+
+      // Show AI Coach placement tip
+      const placementTip = getPlacementTip(performance, potential);
+      addSuggestion({
+        ...placementTip,
+        id: `placement-tip-${employee.id}-${Date.now()}`,
+        dismissable: true,
+      });
+
+      // Show success notification
+      notify({
+        title: `${employee.name} placed successfully`,
+        description: `Moved to ${targetBox.name}`,
+        variant: 'success',
+      });
     } catch (error) {
       console.error('Error updating assessment:', error);
       notify({
@@ -629,8 +655,10 @@ export default function NineBoxGrid({
 
   if (boxLoading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+      <div className="w-full">
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        </div>
       </div>
     );
   }
@@ -649,25 +677,8 @@ export default function NineBoxGrid({
     ? departments.find(d => d.id === activeDepartmentFilter)
     : null;
 
-  // Department distribution - only show when no active filter
-  const isCompanyView = selectedDepartments.length === 0;
-  const isMultiDept = selectedDepartments.length > 1;
-  const activeDepartments = isCompanyView
-    ? departments
-    : departments.filter(d => selectedDepartments.includes(d.id));
-
-  const departmentDistribution = activeDepartments.map(dept => {
-    const deptEmployees = filteredEmployees.filter(emp => emp.department_id === dept.id);
-    const assessed = deptEmployees.filter(emp => emp.assessment);
-    return {
-      ...dept,
-      count: deptEmployees.length,
-      assessed: assessed.length
-    };
-  });
-
   return (
-    <div className="space-y-6">
+    <div id="nine-box-talent-grid" className="w-full space-y-6">
       {/* Header with stats and actions */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
         <div className="flex justify-between items-center mb-6">
@@ -816,60 +827,6 @@ export default function NineBoxGrid({
         </div>
       </div>
 
-      {/* Department Legend & Distribution */}
-      {!activeDepartmentFilter && (isCompanyView || isMultiDept) && departmentDistribution.length > 1 && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {isCompanyView ? 'Department Distribution' : 'Selected Departments'}
-            </h3>
-            <span className="text-sm text-gray-600">
-              {departmentDistribution.length} departments • {filteredEmployees.length} total employees
-            </span>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {departmentDistribution.map(dept => (
-              <div 
-                key={dept.id}
-                className="relative p-4 rounded-xl border-2 hover:shadow-md transition-all"
-                style={{ borderColor: dept.color }}
-              >
-                <div className="flex items-center space-x-2 mb-2">
-                  <div 
-                    className="w-4 h-4 rounded-full shadow-md"
-                    style={{ backgroundColor: dept.color }}
-                  />
-                  <span className="font-semibold text-sm">{dept.name}</span>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-600">Total:</span>
-                    <span className="font-bold text-gray-900">{dept.count}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-600">Assessed:</span>
-                    <span className="font-bold" style={{ color: dept.color }}>
-                      {dept.assessed} ({dept.count > 0 ? Math.round((dept.assessed / dept.count) * 100) : 0}%)
-                    </span>
-                  </div>
-                </div>
-                {/* Progress bar */}
-                <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full transition-all"
-                    style={{ 
-                      width: `${dept.count > 0 ? (dept.assessed / dept.count) * 100 : 0}%`,
-                      backgroundColor: dept.color
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Guidance Banner for Plans */}
       {shouldShowGuidance && userRole !== 'viewer' && (
         <div className="bg-blue-50 border-l-4 border-blue-600 rounded-lg p-4">
@@ -921,35 +878,35 @@ export default function NineBoxGrid({
               <div className="flex">
                 {/* Potential axis label (vertical) - stretches full height */}
                 <div className="flex flex-col mr-4">
-                  <div className="flex flex-col items-center justify-between h-full gap-3 px-3 py-6 bg-gray-50 rounded-lg border-2 border-gray-300">
-                    <span className="text-sm font-semibold text-gray-900 uppercase">High</span>
+                  <div className="flex flex-col items-center justify-between h-full gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-6">
+                    <span className="text-xs font-medium uppercase text-gray-700">High</span>
                     <div className="flex flex-col items-center gap-2 flex-1 justify-center">
-                      <div className="w-0.5 flex-1 bg-gradient-to-b from-gray-900 to-gray-700"></div>
+                      <div className="flex-1 w-px bg-gray-200"></div>
                       <div className="-rotate-90 whitespace-nowrap">
-                        <span className="text-2xl font-black text-gray-900 tracking-wider">POTENTIAL</span>
+                        <span className="text-lg font-semibold tracking-wide text-gray-700">Potential</span>
                       </div>
-                      <div className="w-0.5 flex-1 bg-gradient-to-b from-gray-700 to-gray-400"></div>
+                      <div className="flex-1 w-px bg-gray-200"></div>
                     </div>
-                    <span className="text-sm font-semibold text-gray-500 uppercase">Low</span>
+                    <span className="text-xs font-medium uppercase text-gray-500">Low</span>
                   </div>
                 </div>
 
                 {/* Grid with Performance label above */}
                 <div className="flex-1 flex flex-col">
                   {/* Performance axis label (horizontal) - stretches full width */}
-                  <div className="flex items-center justify-between w-full gap-3 px-6 py-3 bg-gray-50 rounded-lg border-2 border-gray-300 mb-4">
-                    <span className="text-sm font-semibold text-gray-500 uppercase">Low</span>
-                    <div className="flex items-center gap-2 flex-1 justify-center">
-                      <div className="h-0.5 flex-1 bg-gradient-to-r from-gray-400 to-gray-700"></div>
-                      <span className="text-2xl font-black text-gray-900 tracking-wider whitespace-nowrap">PERFORMANCE</span>
-                      <div className="h-0.5 flex-1 bg-gradient-to-r from-gray-700 to-gray-900"></div>
+                  <div className="mb-4 flex w-full items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-6 py-3">
+                    <span className="text-xs font-medium uppercase text-gray-500">Low</span>
+                    <div className="flex flex-1 items-center justify-center gap-2">
+                      <div className="h-px flex-1 bg-gray-200"></div>
+                      <span className="whitespace-nowrap text-lg font-semibold tracking-wide text-gray-700">Performance</span>
+                      <div className="h-px flex-1 bg-gray-200"></div>
                     </div>
-                    <span className="text-sm font-semibold text-gray-900 uppercase">High</span>
+                    <span className="text-xs font-medium uppercase text-gray-700">High</span>
                   </div>
 
                   {/* 3x3 Grid */}
                   <div className="flex-1">
-                    <div className="grid grid-cols-3 grid-rows-3 gap-4 min-h-[1200px] bg-white/50 rounded-xl p-4 border-2 border-gray-200">
+                    <div className="grid min-h-[420px] grid-cols-3 grid-rows-3 gap-4 rounded-2xl border border-gray-200 bg-white p-4 md:min-h-[540px]">
                       {boxDefinitions.map((boxDef) => (
                         <BoxCell
                           key={boxDef.key}
@@ -1019,6 +976,7 @@ export default function NineBoxGrid({
         onClose={handleModalClose}
         onNavigate={handleModalNavigate}
         onEmployeeUpdate={onEmployeeUpdate}
+        onCardClick={handleCardClick}
       />
 
       {/* Enhanced Employee Plan Modal */}
@@ -1062,6 +1020,8 @@ export default function NineBoxGrid({
           initialReviewType={initialReviewType}
           performanceReviewRecord={performanceReviews[selectedEmployee.id]}
           onReviewSave={handleReviewSave}
+          onPlacementSuggestion={onPlacementSuggestion}
+          availableEmployees={filteredEmployees}
           onSavePlan={(plan) => {
             const updatedPlans = {
               ...employeePlans,

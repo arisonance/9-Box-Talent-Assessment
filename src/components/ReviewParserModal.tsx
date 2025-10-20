@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, FileText, Sparkles, TrendingUp, Target, AlertCircle, CheckCircle2, Zap, Key, Brain, Plus, Trash2 } from 'lucide-react';
+import { X, FileText, Sparkles, Target, AlertCircle, CheckCircle2, Zap, Brain, Plus, Trash2 } from 'lucide-react';
 import { parsePerformanceReview, type ParsedReview } from '../lib/reviewParser';
-import { analyzeReviewWithAI, initializeAnthropic, isAnthropicConfigured, type AIAnalysisResult } from '../lib/anthropicService';
+import { analyzeReviewWithAI, isAnthropicConfigured, type AIAnalysisResult } from '../lib/anthropicService';
 import type { Department, Performance, Potential } from '../types';
 
 interface ReviewParserModalProps {
@@ -17,15 +17,17 @@ export default function ReviewParserModal({
   departments,
   onEmployeeCreated
 }: ReviewParserModalProps) {
+  const anthropicAvailable = isAnthropicConfigured();
   const [reviewText, setReviewText] = useState('');
   const [parsedData, setParsedData] = useState<ParsedReview | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [step, setStep] = useState<'input' | 'review'>('input');
-  const [useAI, setUseAI] = useState(true);
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [useAI, setUseAI] = useState(anthropicAvailable);
   const [analysisError, setAnalysisError] = useState('');
+  const [anthropicWarning, setAnthropicWarning] = useState<string | null>(
+    anthropicAvailable ? null : 'Anthropic API key not configured. Add VITE_ANTHROPIC_API_KEY to enable AI parsing.'
+  );
   
   // Editable fields
   const [editedName, setEditedName] = useState('');
@@ -43,25 +45,26 @@ export default function ReviewParserModal({
   
   useEffect(() => {
     if (isOpen) {
-      const configured = isAnthropicConfigured();
-      setShowApiKeyInput(!configured);
-      setUseAI(configured);
+      setUseAI(anthropicAvailable);
+      setAnthropicWarning(anthropicAvailable ? null : 'Anthropic API key not configured. Add VITE_ANTHROPIC_API_KEY to enable AI parsing.');
     }
-  }, [isOpen]);
+  }, [isOpen, anthropicAvailable]);
 
   const handleAnalyze = async () => {
     if (!reviewText.trim()) return;
     
     setIsAnalyzing(true);
     setAnalysisError('');
+    if (useAI && !anthropicAvailable) {
+      setAnthropicWarning('Anthropic API key not configured. Falling back to pattern matching.');
+      setUseAI(false);
+    } else {
+      setAnthropicWarning(null);
+    }
     
     try {
-      if (useAI) {
+      if (useAI && anthropicAvailable) {
         // Use real AI analysis with Claude
-        if (apiKey && !isAnthropicConfigured()) {
-          initializeAnthropic(apiKey);
-        }
-        
         const aiResult = await analyzeReviewWithAI(reviewText);
         setAiAnalysis(aiResult);
         setEditedName(aiResult.employeeName);
@@ -199,27 +202,27 @@ export default function ReviewParserModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 border-b border-gray-200 p-6 text-white">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start space-x-4">
-              <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
-                <Sparkles className="w-6 h-6" />
+        <div className="border-b border-gray-200 bg-white p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Sparkles className="h-6 w-6" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold mb-1">AI Performance Review Parser</h2>
-                <p className="text-purple-100 text-sm">
-                  Paste a performance review to automatically extract employee data, suggest 9-box placement, and generate a development plan
+                <h2 className="mb-1 text-2xl font-semibold text-gray-900">AI Performance Review Parser</h2>
+                <p className="text-sm text-gray-600">
+                  Paste a performance review to extract employee details, suggest a 9-box placement, and draft a development plan.
                 </p>
               </div>
             </div>
             <button
               onClick={handleClose}
-              className="text-white/80 hover:text-white transition-colors"
+              className="rounded-lg p-2 text-gray-400 transition-colors hover:text-gray-600"
             >
-              <X className="w-6 h-6" />
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
@@ -228,120 +231,92 @@ export default function ReviewParserModal({
         <div className="flex-1 overflow-y-auto p-6">
           {step === 'input' && (
             <div className="space-y-6">
-              {/* AI Status & API Key */}
-              {showApiKeyInput && (
-                <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border-2 border-purple-200">
-                  <div className="flex items-start space-x-3">
-                    <Key className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <h3 className="font-bold text-purple-900 mb-2">Anthropic API Key Required</h3>
-                      <p className="text-sm text-purple-800 mb-3">
-                        Enter your Anthropic API key to use AI-powered analysis with Claude. This will provide Sonance-specific insights and personalized development plans.
-                      </p>
-                      <div className="flex space-x-2">
-                        <input
-                          type="password"
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          placeholder="sk-ant-..."
-                          className="flex-1 px-3 py-2 border border-purple-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                        />
-                        <button
-                          onClick={() => {
-                            if (apiKey) {
-                              const success = initializeAnthropic(apiKey);
-                              if (success) {
-                                setUseAI(true);
-                                setShowApiKeyInput(false);
-                              }
-                            }
-                          }}
-                          disabled={!apiKey}
-                          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium"
-                        >
-                          Save
-                        </button>
-                      </div>
-                      <p className="text-xs text-purple-600 mt-2">
-                        Get your API key from <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline">console.anthropic.com</a>
-                      </p>
-                      <button
-                        onClick={() => {
-                          setUseAI(false);
-                          setShowApiKeyInput(false);
-                        }}
-                        className="mt-2 text-xs text-purple-700 hover:text-purple-900 underline"
-                      >
-                        Continue without AI (use basic pattern matching)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* AI Mode Indicator */}
-              {!showApiKeyInput && (
-                <div className={`rounded-xl p-3 border-2 flex items-center justify-between ${
-                  useAI ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                }`}>
-                  <div className="flex items-center space-x-2">
-                    <Brain className={`w-5 h-5 ${useAI ? 'text-green-600' : 'text-gray-500'}`} />
-                    <span className={`font-semibold text-sm ${useAI ? 'text-green-900' : 'text-gray-700'}`}>
-                      {useAI ? '✨ AI-Powered Analysis (Claude)' : '📝 Pattern Matching'}
-                    </span>
-                  </div>
-                  {!useAI && (
-                    <button
-                      onClick={() => setShowApiKeyInput(true)}
-                      className="text-xs text-blue-600 hover:text-blue-700 underline font-medium"
-                    >
-                      Enable AI
-                    </button>
-                  )}
-                </div>
-              )}
-              
-              {/* Error Display */}
-              {analysisError && (
-                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
-                  <div className="flex items-start space-x-3">
-                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <h3 className="font-bold text-red-900">Analysis Error</h3>
-                      <p className="text-sm text-red-800 mt-1">{analysisError}</p>
-                    </div>
-                  </div>
+              {/* AI Status */}
+              {anthropicWarning && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  {anthropicWarning}
                 </div>
               )}
 
-              {/* Instructions */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border-2 border-blue-200">
-                <div className="flex items-start space-x-3">
-                  <Zap className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <h3 className="font-bold text-blue-900 mb-2">How it works:</h3>
-                    <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                      <li>Paste the complete performance review text below</li>
-                      <li>Click "Analyze Review" to extract information</li>
-                      <li>Review the {useAI ? 'AI' : ''} suggestions and make any adjustments</li>
-                      <li>Confirm to create the employee and auto-generate their plan</li>
-                    </ol>
-                    <p className="text-xs text-blue-700 mt-3 italic">
-                      💡 Tip: {useAI ? 'Claude AI will extract Sonance-specific insights and create personalized plans' : 'Include employee name, achievements, challenges, and performance indicators'}
-                    </p>
-                  </div>
+              <div className={`flex items-center justify-between rounded-xl border bg-gray-50 p-3 ${
+                useAI && anthropicAvailable ? 'border-green-200' : 'border-gray-200'
+              }`}>
+                <div className="flex items-center space-x-2">
+                  <Brain className={`h-5 w-5 ${useAI && anthropicAvailable ? 'text-green-600' : 'text-gray-500'}`} />
+                  <span className={`text-sm font-medium ${useAI && anthropicAvailable ? 'text-green-900' : 'text-gray-700'}`}>
+                    {useAI && anthropicAvailable ? 'AI-Powered Analysis (Claude)' : 'Pattern Matching Mode'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setUseAI(false)}
+                    className={`text-xs font-medium underline ${useAI ? 'text-blue-600 hover:text-blue-700' : 'text-gray-400'}`}
+                    disabled={!useAI}
+                  >
+                    Use pattern matching
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (anthropicAvailable) {
+                        setUseAI(true);
+                        setAnthropicWarning(null);
+                      } else {
+                        setAnthropicWarning('Anthropic API key not configured. Add VITE_ANTHROPIC_API_KEY to enable AI parsing.');
+                      }
+                    }}
+                    className={`text-xs font-medium underline ${useAI && anthropicAvailable ? 'text-gray-400' : 'text-blue-600 hover:text-blue-700'}`}
+                    disabled={useAI && anthropicAvailable}
+                  >
+                    Enable AI
+                  </button>
                 </div>
               </div>
 
-              {/* Text Input */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Performance Review Text
-                </label>
-                <textarea
-                  value={reviewText}
-                  onChange={(e) => setReviewText(e.target.value)}
-                  placeholder="Paste the performance review here...
+              {/* Error Display */}
+              {analysisError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" />
+                    <div>
+                      <h3 className="font-semibold text-red-900">Analysis Error</h3>
+                      <p className="mt-1 text-sm text-red-800">{analysisError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-6 md:grid-cols-[minmax(0,260px)_1fr]">
+                {/* Instructions */}
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex items-start space-x-3">
+                      <Zap className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+                      <div className="flex-1">
+                        <h3 className="mb-2 font-semibold text-blue-900">How it works</h3>
+                        <ol className="list-inside list-decimal space-y-1 text-sm text-blue-800">
+                          <li>Paste the full performance review.</li>
+                          <li>Run analysis to extract the essentials.</li>
+                          <li>Tweak the details if anything looks off.</li>
+                          <li>Confirm to create the employee and plan.</li>
+                        </ol>
+                        <p className="mt-3 text-xs text-blue-700">
+                          Tip: {useAI ? 'Claude highlights Sonance-specific strengths and risks.' : 'Mention achievements, challenges, and growth areas for better results.'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Text Input */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-gray-700">
+                      Performance Review Text
+                    </label>
+                    <textarea
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                      placeholder={`Paste the performance review here...
 
 Example:
 Employee: Sarah Johnson
@@ -357,19 +332,19 @@ Strengths:
 
 Areas for Development:
 - Expand cross-functional collaboration
-- Develop strategic planning skills..."
-                  rows={12}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent font-mono text-sm"
-                />
-                <div className="mt-2 flex justify-between items-center">
-                  <span className="text-xs text-gray-500">
-                    {reviewText.length} characters • {reviewText.split(/\s+/).filter(w => w).length} words
-                  </span>
-                  {reviewText.length > 100 && (
-                    <span className="text-xs text-green-600 font-medium">
-                      ✓ Sufficient content for analysis
-                    </span>
-                  )}
+- Develop strategic planning skills...`}
+                      rows={14}
+                      className="w-full rounded-xl border border-gray-300 px-4 py-3 font-mono text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                      <span>
+                        {reviewText.length} characters • {reviewText.split(/\s+/).filter(w => w).length} words
+                      </span>
+                      {reviewText.length > 100 && (
+                        <span className="font-medium text-green-600">✓ Ready for analysis</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -378,7 +353,7 @@ Areas for Development:
           {step === 'review' && (aiAnalysis || parsedData) && (
             <div className="space-y-6">
               {/* Confidence Banner */}
-              <div className={`rounded-xl p-4 border-2 ${
+              <div className={`rounded-xl border p-4 ${
                 (aiAnalysis?.confidence || parsedData?.confidence || 70) >= 80 ? 'bg-green-50 border-green-200' :
                 (aiAnalysis?.confidence || parsedData?.confidence || 70) >= 60 ? 'bg-yellow-50 border-yellow-200' :
                 'bg-orange-50 border-orange-200'
@@ -398,18 +373,18 @@ Areas for Development:
               
               {/* Sonance-Specific Insights (AI Only) */}
               {aiAnalysis && aiAnalysis.sonanceSpecificInsights.length > 0 && (
-                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-5 border-2 border-purple-200">
-                  <h3 className="font-bold text-purple-900 mb-3 flex items-center">
-                    <Sparkles className="w-5 h-5 text-purple-600 mr-2" />
+                <div className="rounded-xl border border-purple-100 bg-white p-5">
+                  <h3 className="mb-3 flex items-center font-semibold text-purple-900">
+                    <Sparkles className="mr-2 h-5 w-5 text-purple-600" />
                     Sonance-Specific Insights
                   </h3>
                   <div className="space-y-2">
                     {aiAnalysis.sonanceSpecificInsights.map((insight, i) => (
-                      <div key={i} className="flex items-start space-x-3 bg-white/60 p-3 rounded-lg">
-                        <div className="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                      <div key={i} className="flex items-start space-x-3 rounded-lg bg-purple-50 p-3">
+                        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-purple-500 text-xs font-semibold text-white">
                           {i + 1}
                         </div>
-                        <p className="text-sm text-purple-900 flex-1">{insight}</p>
+                        <p className="flex-1 text-sm text-purple-900">{insight}</p>
                       </div>
                     ))}
                   </div>
@@ -469,9 +444,9 @@ Areas for Development:
               </div>
 
               {/* 9-Box Placement Suggestion */}
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 border-2 border-indigo-200">
-                <h3 className="font-bold text-gray-900 mb-4 flex items-center">
-                  <Target className="w-5 h-5 text-indigo-600 mr-2" />
+              <div className="rounded-xl border border-indigo-100 bg-white p-6">
+                <h3 className="mb-4 flex items-center font-semibold text-gray-900">
+                  <Target className="mr-2 h-5 w-5 text-indigo-600" />
                   Suggested 9-Box Placement
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -504,10 +479,10 @@ Areas for Development:
                     </select>
                   </div>
                 </div>
-                <div className="mt-4 p-4 bg-white rounded-lg border border-indigo-200">
+                <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-600">Will be placed in:</span>
-                    <span className="font-bold text-indigo-600 text-lg">
+                    <span className="text-lg font-semibold text-indigo-700">
                       {getBoxLabel(editedPerformance, editedPotential)}
                     </span>
                   </div>
@@ -742,10 +717,10 @@ Areas for Development:
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 p-6 bg-gray-50 flex justify-between items-center">
+        <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 p-6">
           <button
             onClick={step === 'review' ? () => setStep('input') : handleClose}
-            className="px-6 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors"
+            className="px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"
           >
             {step === 'review' ? '← Back' : 'Cancel'}
           </button>
@@ -754,16 +729,16 @@ Areas for Development:
             <button
               onClick={handleAnalyze}
               disabled={reviewText.length < 100 || isAnalyzing}
-              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isAnalyzing ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   <span>Analyzing...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-5 h-5" />
+                  <Sparkles className="h-5 w-5" />
                   <span>Analyze Review</span>
                 </>
               )}
@@ -772,9 +747,9 @@ Areas for Development:
             <button
               onClick={handleConfirm}
               disabled={!editedName.trim()}
-              className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <CheckCircle2 className="w-5 h-5" />
+              <CheckCircle2 className="h-5 w-5" />
               <span>Create Employee & Generate Plan</span>
             </button>
           )}

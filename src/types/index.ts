@@ -59,6 +59,50 @@ export interface Employee {
   assessment?: Assessment;
   manager_notes?: ManagerNote[];
   one_on_one_meetings?: OneOnOneMeetingWithDetails[];
+  is_critical_role?: boolean;
+  critical_role_id?: string;
+  
+  // Job Description fields
+  job_description?: string;
+  key_responsibilities?: string[];
+  required_skills?: string[];
+  preferred_qualifications?: string;
+  
+  // Org hierarchy
+  reports_to_id?: string;
+  reports_to?: Employee; // Manager (populated via join)
+  direct_reports?: Employee[]; // Direct reports (populated via query)
+}
+
+// Skills library for autocomplete
+export interface Skill {
+  id: string;
+  organization_id: string;
+  skill_name: string;
+  category: 'technical' | 'soft_skill' | 'domain_knowledge' | 'certification' | 'language';
+  description?: string;
+  usage_count: number;
+  last_used_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Job description template
+export interface JobDescriptionTemplate {
+  id: string;
+  organization_id?: string;
+  title: string;
+  category: 'engineering' | 'product' | 'sales' | 'marketing' | 'operations' | 'leadership' | 'support' | 'finance' | 'hr';
+  description_template: string;
+  responsibilities_template: string[];
+  required_skills_template: string[];
+  preferred_qualifications_template?: string;
+  is_system_template: boolean;
+  is_active: boolean;
+  usage_count: number;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Assessment {
@@ -78,6 +122,7 @@ export interface Assessment {
 export type PlanType = 'development' | 'performance_improvement' | 'retention' | 'succession';
 export type ActionItemPriority = 'high' | 'medium' | 'low';
 export type ActionItemStatus = 'not_started' | 'in_progress' | 'completed' | 'blocked' | 'overdue';
+export type WorkingGenius = 'wonder' | 'invention' | 'discernment' | 'galvanizing' | 'enablement' | 'tenacity';
 
 export interface ActionItem {
   id: string;
@@ -102,6 +147,48 @@ export interface PlanMilestone {
   description?: string;
 }
 
+// Retention Plan Specific Types
+export interface StayInterviewNote {
+  id: string;
+  question: string;
+  answer: string;
+  sentiment?: 'positive' | 'neutral' | 'concerning';
+  follow_up_needed: boolean;
+  recorded_date: string;
+}
+
+export interface RetentionStrategy {
+  id: string;
+  category: 'compensation' | 'career_growth' | 'work_life_balance' | 'recognition' | 'culture';
+  action: string;
+  target_date: string;
+  status: 'planned' | 'in_progress' | 'completed';
+  owner: string;
+}
+
+export interface LTIPDetails {
+  eligible: boolean;
+  enrolled?: boolean;
+  grant_date?: string;
+  vesting_schedule?: string;
+  phantom_shares?: number;
+  notes?: string;
+}
+
+export interface RetentionPlanData {
+  flight_risk_score: number;
+  risk_level: 'high' | 'medium' | 'low';
+  risk_factors: string[];
+  stay_interview_notes: StayInterviewNote[];
+  retention_strategies: RetentionStrategy[];
+  ltip_details?: LTIPDetails;
+  last_stay_interview?: string;
+  next_stay_interview?: string;
+  compensation_review_date?: string;
+  career_aspirations?: string;
+  concerns?: string[];
+}
+
 export interface EmployeePlan {
   id: string;
   employee_id: string;
@@ -122,6 +209,7 @@ export interface EmployeePlan {
   progress_percentage?: number; // Auto-calculated from action items
   budget_allocated?: number; // Development budget
   budget_spent?: number; // Track spending
+  retention_data?: RetentionPlanData; // Only populated for retention plan_type
 }
 
 export interface BoxDefinition {
@@ -283,6 +371,7 @@ export interface OneOnOneSharedNote {
   created_by: string;
   created_at: string;
   updated_at: string;
+  working_genius?: WorkingGenius[];
 }
 
 export interface OneOnOnePrivateNote {
@@ -293,6 +382,7 @@ export interface OneOnOnePrivateNote {
   tags?: string[];
   created_at: string;
   updated_at: string;
+  working_genius?: WorkingGenius[];
 }
 
 export interface OneOnOneActionItem {
@@ -306,6 +396,57 @@ export interface OneOnOneActionItem {
   completed_at?: string;
   created_at: string;
   updated_at: string;
+  working_genius?: WorkingGenius[];
+}
+
+export interface OneOnOneAgendaComment {
+  id: string;
+  agenda_item_id: string;
+  meeting_id: string;
+  author_id: string;
+  author_name: string;
+  comment: string;
+  created_at: string;
+}
+
+export interface OneOnOneMeetingComment {
+  id: string;
+  meeting_id: string;
+  author_id: string;
+  author_name: string;
+  comment: string;
+  created_at: string;
+}
+
+export interface OneOnOneTranscript {
+  id: string;
+  meeting_id: string;
+  recorded_at: string;
+  tags: string[];
+  content: string;
+  source: 'uploaded' | 'pasted';
+  file_name?: string;
+  detected_format?: string;
+  participants?: string[];
+  warnings?: string[];
+  created_at: string;
+}
+
+export interface OneOnOneMeetingRecording {
+  id: string;
+  meeting_id: string;
+  created_by: string;
+  created_at: string;
+  url: string;
+  duration_seconds?: number;
+  mime_type?: string;
+}
+
+export interface OneOnOneMeetingSummaryInsight {
+  summary: string;
+  highlights: string[];
+  suggested_action_items: string[];
+  tone?: 'positive' | 'neutral' | 'caution';
 }
 
 export interface OneOnOneMeetingWithDetails extends OneOnOneMeeting {
@@ -313,6 +454,11 @@ export interface OneOnOneMeetingWithDetails extends OneOnOneMeeting {
   shared_notes?: OneOnOneSharedNote[];
   private_notes?: OneOnOnePrivateNote[];
   action_items?: OneOnOneActionItem[];
+  agenda_comments?: OneOnOneAgendaComment[];
+  meeting_comments?: OneOnOneMeetingComment[];
+  recordings?: OneOnOneMeetingRecording[];
+  transcripts?: OneOnOneTranscript[];
+  summary_insights?: OneOnOneMeetingSummaryInsight;
   employee_name?: string;
 }
 

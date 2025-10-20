@@ -9,6 +9,7 @@ interface PlansOverviewProps {
   employeePlans: Record<string, any>;
   userRole: UserRole;
   onOpenPlan: (employee: Employee) => void;
+  onEmployeeClick?: (employee: Employee) => void;
 }
 
 type PlanFilter = 'all' | 'not-started' | 'in-progress' | 'complete' | 'development' | 'performance_improvement' | 'retention' | 'succession';
@@ -18,7 +19,8 @@ export default function PlansOverview({
   departments,
   employeePlans,
   userRole,
-  onOpenPlan
+  onOpenPlan,
+  onEmployeeClick
 }: PlansOverviewProps) {
   const [filter, setFilter] = useState<PlanFilter>('all');
 
@@ -271,18 +273,19 @@ export default function PlansOverview({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredEmployees.map(employee => (
-              <EmployeeCard
-                key={employee.id}
-                employee={employee}
-                department={departments.find(d => d.id === employee.department_id)}
-                showMenu={false}
-                onOpenPlan={onOpenPlan}
-                employeePlan={employeePlans[employee.id]}
-              />
-            ))}
-          </div>
-        )}
+          {filteredEmployees.map(employee => (
+            <EmployeeCard
+              key={employee.id}
+              employee={employee}
+              department={departments.find(d => d.id === employee.department_id)}
+              showMenu={false}
+              onOpenPlan={onOpenPlan}
+              onCardClick={onEmployeeClick}
+              employeePlan={employeePlans[employee.id]}
+            />
+          ))}
+        </div>
+      )}
       </div>
 
       {/* Employees Needing Plans */}
@@ -306,6 +309,7 @@ export default function PlansOverview({
                 department={departments.find(d => d.id === employee.department_id)}
                 showMenu={false}
                 onOpenPlan={onOpenPlan}
+                onCardClick={onEmployeeClick}
                 employeePlan={undefined}
               />
             ))}

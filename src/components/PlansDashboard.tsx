@@ -1,357 +1,293 @@
 import { useMemo } from 'react';
-import {
-  Target, Clock, AlertTriangle, CheckCircle2, TrendingUp,
-  Users, DollarSign, Calendar, Award, AlertCircle
-} from 'lucide-react';
+import { Target, AlertTriangle, TrendingUp, ClipboardList } from 'lucide-react';
 import type { Employee, Department, EmployeePlan } from '../types';
-import { calculatePlanProgress, getOverdueActionItems, getUpcomingActionItems } from '../lib/actionItemGenerator';
+import { calculatePlanProgress, getOverdueActionItems } from '../lib/actionItemGenerator';
+import PlanCardUnified, { type PlanMilestoneItem, type PlanOwnerDisplay, type PlanPhase, type PlanStatus } from './PlanCardUnified';
+import { useToast } from './unified';
 
 interface PlansDashboardProps {
   employees: Employee[];
   departments: Department[];
   employeePlans: Record<string, EmployeePlan>;
   onEmployeeClick?: (employee: Employee) => void;
+  onOpenPlanModal?: (employee: Employee) => void;
+}
+
+interface ComputedPlanCard {
+  employee: Employee;
+  status: PlanStatus;
+  progress: number;
+  startDate: string;
+  targetDate: string;
+  phase: PlanPhase;
+  focusSummary: string;
+  milestones: PlanMilestoneItem[];
+  owners: PlanOwnerDisplay[];
+  planTypeLabel: string;
+}
+
+const PHASE_ORDER: PlanPhase[] = ['foundation', 'integration', 'impact'];
+
+function addDays(date: Date, days: number) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy.toISOString();
+}
+
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: typeof Target;
+  label: string;
+  value: string;
+  accent: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold ${accent}`}>
+        <Icon className="h-3.5 w-3.5" />
+        <span>{label}</span>
+      </div>
+      <div className="mt-3 text-3xl font-semibold text-slate-900">{value}</div>
+    </div>
+  );
 }
 
 export default function PlansDashboard({
   employees,
-  departments,
+  departments: _departments,
   employeePlans,
-  onEmployeeClick
+  onEmployeeClick,
+  onOpenPlanModal,
 }: PlansDashboardProps) {
-  const stats = useMemo(() => {
-    const employeesWithPlans = employees.filter(emp => employeePlans[emp.id]);
-    const totalEmployees = employees.filter(emp => emp.assessment).length;
-    const totalPlans = employeesWithPlans.length;
+  const { notify } = useToast();
 
-    let totalActionItems = 0;
-    let completedActions = 0;
-    let overdueActions = 0;
-    let upcomingActions = 0;
-    let totalBudgetAllocated = 0;
-    let totalBudgetSpent = 0;
+  const plans = useMemo<ComputedPlanCard[]>(() => {
+    return employees
+      .map((employee) => {
+        const plan = employeePlans[employee.id];
+        if (!plan) return null;
 
-    employeesWithPlans.forEach(emp => {
-      const plan = employeePlans[emp.id];
-      if (plan) {
-        totalActionItems += plan.action_items.length;
-        completedActions += plan.action_items.filter(a => a.completed).length;
-        overdueActions += getOverdueActionItems(plan.action_items).length;
-        upcomingActions += getUpcomingActionItems(plan.action_items).length;
-        totalBudgetAllocated += plan.budget_allocated || 0;
-        totalBudgetSpent += plan.budget_spent || 0;
-      }
-    });
+        const progress = typeof plan.progress_percentage === 'number'
+          ? plan.progress_percentage
+          : calculatePlanProgress(plan.action_items || []);
 
-    const completionRate = totalActionItems > 0 ? Math.round((completedActions / totalActionItems) * 100) : 0;
-    const planCoverage = totalEmployees > 0 ? Math.round((totalPlans / totalEmployees) * 100) : 0;
+        const overdueItems = getOverdueActionItems(plan.action_items || []);
+
+        let status: PlanStatus = 'on-track';
+        if (overdueItems.length > 1 || progress < 30) {
+          status = 'escalate';
+        } else if (overdueItems.length === 1 || progress < 60) {
+          status = 'needs-checkin';
+        }
+
+        const startDate = plan.created_at;
+        const targetDate = plan.next_review_date ?? addDays(new Date(plan.created_at), 90);
+
+        const phase: PlanPhase = progress < 35 ? 'foundation' : progress < 70 ? 'integration' : 'impact';
+
+        const milestones: PlanMilestoneItem[] = (plan.milestones ?? plan.action_items?.slice(0, 5) ?? []).map((item, index) => {
+          const id = plan.milestones ? item.id : plan.action_items[index]?.id ?? `${plan.id}-action-${index}`;
+          const label = plan.milestones ? item.title : plan.action_items[index]?.description ?? `Action ${index + 1}`;
+          const dueDate = plan.milestones ? item.targetDate : plan.action_items[index]?.dueDate;
+
+          let milestoneStatus: 'upcoming' | 'complete' | 'overdue' = 'upcoming';
+          if (plan.milestones) {
+            milestoneStatus = item.completed ? 'complete' : new Date(dueDate ?? '') < new Date() ? 'overdue' : 'upcoming';
+          } else {
+            const action = plan.action_items[index];
+            if (action?.status === 'completed') milestoneStatus = 'complete';
+            else if (action?.status === 'overdue') milestoneStatus = 'overdue';
+          }
+
+          return {
+            id,
+            label,
+            dueDate,
+            owner: plan.action_items?.[index]?.owner ?? employee.manager_name ?? 'Manager',
+            status: milestoneStatus,
+          };
+        });
+
+        const owners: PlanOwnerDisplay[] = [
+          {
+            role: 'Manager',
+            name: employee.manager_name ?? 'Manager',
+            onNudge: () => notify({
+              title: `Reminder queued for ${employee.manager_name ?? 'manager'}`,
+              description: `We’ll remind them to follow up with ${employee.name}.`,
+              variant: 'info',
+            }),
+          },
+          {
+            role: employee.name,
+            name: 'Employee',
+          },
+        ];
+
+        const focusSummary = plan.objectives?.[0] ?? 'Use this plan to turn feedback into momentum.';
+
+        return {
+          employee,
+          status,
+          progress,
+          startDate,
+          targetDate,
+          phase,
+          focusSummary,
+          milestones,
+          owners,
+          planTypeLabel: plan.plan_type.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+        } satisfies ComputedPlanCard;
+      })
+      .filter(Boolean) as ComputedPlanCard[];
+  }, [employees, employeePlans, notify]);
+
+  const employeesWithoutPlan = useMemo(() => {
+    return employees.filter((employee) => employee.assessment && !employeePlans[employee.id]);
+  }, [employees, employeePlans]);
+
+  const summary = useMemo(() => {
+    const assessed = employees.filter((employee) => employee.assessment).length;
+    const withPlans = plans.length;
+    const coverage = assessed > 0 ? Math.round((withPlans / assessed) * 100) : 0;
+
+    const overdueActions = plans.reduce((count, plan) => {
+      return count + plan.milestones.filter((milestone) => milestone.status === 'overdue').length;
+    }, 0);
 
     return {
-      totalEmployees,
-      totalPlans,
-      planCoverage,
-      totalActionItems,
-      completedActions,
-      completionRate,
+      assessed,
+      withPlans,
+      coverage,
       overdueActions,
-      upcomingActions,
-      totalBudgetAllocated,
-      totalBudgetSpent
     };
-  }, [employees, employeePlans]);
-
-  // Group employees by plan status
-  const employeesByStatus = useMemo(() => {
-    const withPlans = employees.filter(emp => emp.assessment && employeePlans[emp.id]);
-    const withoutPlans = employees.filter(emp => emp.assessment && !employeePlans[emp.id]);
-
-    // Further categorize those with plans
-    const onTrack = withPlans.filter(emp => {
-      const plan = employeePlans[emp.id];
-      const overdue = getOverdueActionItems(plan.action_items);
-      const progress = calculatePlanProgress(plan.action_items);
-      return overdue.length === 0 && progress >= 50;
-    });
-
-    const atRisk = withPlans.filter(emp => {
-      const plan = employeePlans[emp.id];
-      const overdue = getOverdueActionItems(plan.action_items);
-      const progress = calculatePlanProgress(plan.action_items);
-      return overdue.length > 0 || (progress < 50 && overdue.length === 0);
-    });
-
-    const completed = withPlans.filter(emp => {
-      const plan = employeePlans[emp.id];
-      const progress = calculatePlanProgress(plan.action_items);
-      return progress === 100;
-    });
-
-    return {
-      onTrack,
-      atRisk,
-      completed,
-      withoutPlans
-    };
-  }, [employees, employeePlans]);
-
-  const StatCard = ({ icon: Icon, label, value, subtitle, color, trend }: any) => (
-    <div className="bg-white rounded-xl border-2 border-gray-200 p-6 hover:shadow-lg transition-shadow">
-      <div className="flex items-start justify-between mb-4">
-        <div className={`p-3 rounded-lg ${color}`}>
-          <Icon className="w-6 h-6 text-white" />
-        </div>
-        {trend && (
-          <div className={`flex items-center space-x-1 text-xs font-semibold ${
-            trend > 0 ? 'text-green-600' : 'text-red-600'
-          }`}>
-            <TrendingUp className={`w-4 h-4 ${trend < 0 ? 'rotate-180' : ''}`} />
-            <span>{Math.abs(trend)}%</span>
-          </div>
-        )}
-      </div>
-      <div className="space-y-1">
-        <p className="text-3xl font-bold text-gray-900">{value}</p>
-        <p className="text-sm font-medium text-gray-600">{label}</p>
-        {subtitle && <p className="text-xs text-gray-500">{subtitle}</p>}
-      </div>
-    </div>
-  );
-
-  const EmployeeList = ({ employees: emps, title, color, emptyMessage }: any) => (
-    <div>
-      <h3 className="text-lg font-bold text-gray-900 mb-3">{title}</h3>
-      {emps.length === 0 ? (
-        <div className="text-center py-8 text-gray-500 text-sm">
-          {emptyMessage}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {emps.map((emp: Employee) => {
-            const dept = departments.find(d => d.id === emp.department_id);
-            const plan = employeePlans[emp.id];
-            const progress = plan ? calculatePlanProgress(plan.action_items) : 0;
-            const overdue = plan ? getOverdueActionItems(plan.action_items).length : 0;
-
-            return (
-              <button
-                key={emp.id}
-                onClick={() => onEmployeeClick?.(emp)}
-                className="w-full text-left p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                      style={{ backgroundColor: dept?.color || '#6B7280' }}
-                    >
-                      {emp.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{emp.name}</p>
-                      <p className="text-sm text-gray-600">{emp.title || 'Employee'}</p>
-                      {dept && (
-                        <p className="text-xs text-gray-500">{dept.name}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-right space-y-1">
-                    {plan && (
-                      <>
-                        <div className="flex items-center space-x-2 justify-end">
-                          <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                progress === 100 ? 'bg-green-500' :
-                                progress >= 50 ? 'bg-blue-500' :
-                                'bg-yellow-500'
-                              }`}
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <span className="text-sm font-semibold text-gray-700">{progress}%</span>
-                        </div>
-                        {overdue > 0 && (
-                          <div className="flex items-center space-x-1 text-xs text-red-600 font-semibold">
-                            <AlertTriangle className="w-3 h-3" />
-                            <span>{overdue} overdue</span>
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-500">
-                          {plan.action_items.filter(a => a.completed).length}/{plan.action_items.length} actions
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+  }, [employees, plans]);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Development Plans Dashboard</h1>
-        <p className="text-gray-600">Track progress, accountability, and investment across all employee development plans</p>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard icon={Target} label="Assessed talent" value={`${summary.assessed}`} accent="bg-blue-50 text-blue-700" />
+        <SummaryCard icon={ClipboardList} label="Active plans" value={`${summary.withPlans}`} accent="bg-emerald-50 text-emerald-700" />
+        <SummaryCard icon={TrendingUp} label="Plan coverage" value={`${summary.coverage}%`} accent="bg-indigo-50 text-indigo-700" />
+        <SummaryCard icon={AlertTriangle} label="Overdue actions" value={`${summary.overdueActions}`} accent="bg-amber-50 text-amber-700" />
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={Target}
-          label="Plan Coverage"
-          value={`${stats.planCoverage}%`}
-          subtitle={`${stats.totalPlans} of ${stats.totalEmployees} employees have plans`}
-          color="bg-blue-600"
-        />
+      <div className="space-y-5">
+        {plans.map((planCard) => (
+          <PlanCardUnified
+            key={planCard.employee.id}
+            employeeRef={planCard.employee}
+            employeeName={planCard.employee.name}
+            employeeTitle={planCard.employee.title}
+            planTypeLabel={planCard.planTypeLabel}
+            status={planCard.status}
+            progress={planCard.progress}
+            startDate={planCard.startDate}
+            targetDate={planCard.targetDate}
+            phase={planCard.phase}
+            focusSummary={planCard.focusSummary}
+            milestones={planCard.milestones}
+            owners={planCard.owners}
+            onPhaseChange={(newPhase) => {
+              notify({
+                title: `Phase changed to ${newPhase}`,
+                description: `${planCard.employee.name}'s milestones will be suggested again with AI.`,
+                variant: 'info',
+              });
+            }}
+            onRefineFocus={() => {
+              notify({
+                title: 'AI refine ready',
+                description: `We’ll reopen the plan builder for ${planCard.employee.name} with updated prompts.`,
+                variant: 'info',
+              });
+              onOpenPlanModal?.(planCard.employee);
+            }}
+            onCompleteMilestone={(id) => {
+              notify({
+                title: 'Milestone marked complete',
+                description: `Logged completion for ${planCard.employee.name}.`,
+                variant: 'success',
+              });
+            }}
+            onNudgeMilestone={(id) => {
+              notify({
+                title: 'Nudge sent',
+                description: `Owner nudged with context for ${planCard.employee.name}.`,
+                variant: 'info',
+              });
+            }}
+            onRescheduleMilestone={(id) => {
+              notify({
+                title: 'Milestone moved',
+                description: 'Deadline pushed out by 3 days.',
+                variant: 'info',
+              });
+            }}
+            onAddNoteToMilestone={(id) => {
+              notify({
+                title: 'Note added',
+                description: 'Captured an update on progress.',
+                variant: 'success',
+              });
+            }}
+            governanceActions={[
+              {
+                id: 'review',
+                label: 'Review now',
+                onClick: () => onEmployeeClick?.(planCard.employee),
+              },
+              {
+                id: 'objective',
+                label: 'Add objective',
+                onClick: () => onOpenPlanModal?.(planCard.employee),
+              },
+              {
+                id: 'request-360',
+                label: 'Request 360 signal',
+                onClick: () => notify({
+                  title: '360 request queued',
+                  description: 'We’ll spin up a 360 request template for you.',
+                  variant: 'info',
+                }),
+              },
+              {
+                id: 'share',
+                label: 'Share update',
+                onClick: () => notify({
+                  title: 'Update shared',
+                  description: 'Posted a quick update to the plan channel.',
+                  variant: 'success',
+                }),
+              },
+            ]}
+          />
+        ))}
 
-        <StatCard
-          icon={CheckCircle2}
-          label="Action Completion"
-          value={`${stats.completionRate}%`}
-          subtitle={`${stats.completedActions} of ${stats.totalActionItems} actions completed`}
-          color="bg-green-600"
-        />
-
-        <StatCard
-          icon={AlertTriangle}
-          label="Overdue Actions"
-          value={stats.overdueActions}
-          subtitle={stats.overdueActions > 0 ? 'Require immediate attention' : 'No overdue items'}
-          color={stats.overdueActions > 0 ? 'bg-red-600' : 'bg-gray-600'}
-        />
-
-        <StatCard
-          icon={Clock}
-          label="Upcoming (7 days)"
-          value={stats.upcomingActions}
-          subtitle="Actions due soon"
-          color="bg-yellow-600"
-        />
-      </div>
-
-      {/* Budget Overview (if any budgets are set) */}
-      {stats.totalBudgetAllocated > 0 && (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-green-600 rounded-lg">
-                <DollarSign className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Development Budget</h3>
-                <p className="text-sm text-gray-600">Total investment in employee development</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-3xl font-bold text-gray-900">
-                ${stats.totalBudgetSpent.toLocaleString()}
-              </p>
-              <p className="text-sm text-gray-600">
-                of ${stats.totalBudgetAllocated.toLocaleString()} allocated
-              </p>
+        {employeesWithoutPlan.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5 shadow-inner">
+            <h4 className="text-md font-semibold text-slate-900">{employeesWithoutPlan.length} teammates need plans</h4>
+            <p className="mt-2 text-sm text-slate-600">
+              Convert calibration decisions into action. Launch the plan builder to generate objectives, cadence, and owners in seconds.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {employeesWithoutPlan.slice(0, 6).map((employee) => (
+                <button
+                  key={employee.id}
+                  type="button"
+                  onClick={() => onOpenPlanModal?.(employee)}
+                  className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-blue-600 shadow-sm transition hover:bg-blue-50"
+                >
+                  Draft for {employee.name}
+                </button>
+              ))}
             </div>
           </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-gray-700">Budget Utilization</span>
-              <span className="font-bold text-gray-900">
-                {stats.totalBudgetAllocated > 0 ? Math.round((stats.totalBudgetSpent / stats.totalBudgetAllocated) * 100) : 0}%
-              </span>
-            </div>
-            <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
-              <div
-                className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-500"
-                style={{
-                  width: `${stats.totalBudgetAllocated > 0 ? Math.min((stats.totalBudgetSpent / stats.totalBudgetAllocated) * 100, 100) : 0}%`
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Alert Banner for Overdue Items */}
-      {stats.overdueActions > 0 && (
-        <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-bold text-red-900 mb-1">
-                {stats.overdueActions} Overdue Action Items Require Attention
-              </h3>
-              <p className="text-sm text-red-700">
-                Review the "At Risk" section below and work with managers to get these items back on track.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Warning for Low Coverage */}
-      {stats.planCoverage < 50 && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-500 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <AlertTriangle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-bold text-yellow-900 mb-1">
-                Low Development Plan Coverage ({stats.planCoverage}%)
-              </h3>
-              <p className="text-sm text-yellow-700">
-                {employeesByStatus.withoutPlans.length} assessed employees don't have development plans yet. Consider creating plans for all employees in your 9-box grid.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Employee Lists by Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* At Risk */}
-        <div className="bg-red-50 rounded-xl border-2 border-red-200 p-6">
-          <EmployeeList
-            employees={employeesByStatus.atRisk}
-            title="⚠️ At Risk"
-            color="red"
-            emptyMessage="✅ No employees at risk - great job!"
-          />
-        </div>
-
-        {/* Without Plans */}
-        <div className="bg-orange-50 rounded-xl border-2 border-orange-200 p-6">
-          <EmployeeList
-            employees={employeesByStatus.withoutPlans}
-            title="📋 Need Development Plans"
-            color="orange"
-            emptyMessage="✅ All assessed employees have plans!"
-          />
-        </div>
-
-        {/* On Track */}
-        <div className="bg-blue-50 rounded-xl border-2 border-blue-200 p-6">
-          <EmployeeList
-            employees={employeesByStatus.onTrack}
-            title="🎯 On Track"
-            color="blue"
-            emptyMessage="No employees on track yet"
-          />
-        </div>
-
-        {/* Completed */}
-        <div className="bg-green-50 rounded-xl border-2 border-green-200 p-6">
-          <EmployeeList
-            employees={employeesByStatus.completed}
-            title="✅ Completed"
-            color="green"
-            emptyMessage="No completed plans yet"
-          />
-        </div>
+        )}
       </div>
     </div>
   );

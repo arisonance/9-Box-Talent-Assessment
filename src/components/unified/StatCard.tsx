@@ -1,4 +1,4 @@
-import { ComponentType } from 'react';
+import type { ComponentType } from 'react';
 import { TrendingUp } from 'lucide-react';
 
 interface StatCardProps {
@@ -11,6 +11,9 @@ interface StatCardProps {
   onClick?: () => void;
   active?: boolean;
   className?: string;
+  variant?: 'default' | 'compact';
+  textColor?: string;
+  iconClassName?: string;
 }
 
 export default function StatCard({
@@ -23,8 +26,39 @@ export default function StatCard({
   onClick,
   active = false,
   className = '',
+  variant = 'default',
+  textColor,
+  iconClassName,
 }: StatCardProps) {
   const Component = onClick ? 'button' : 'div';
+
+  if (variant === 'compact') {
+    const valueColor = textColor ?? 'text-gray-900';
+    const iconColor = iconClassName ?? valueColor;
+
+    return (
+      <Component
+        onClick={onClick}
+        className={`
+          flex flex-col items-center justify-center gap-1 rounded-lg p-3 text-center transition-all
+          ${onClick ? 'cursor-pointer bg-white border border-gray-200 hover:shadow-md' : 'bg-transparent'}
+          ${className}
+        `}
+      >
+        <Icon className={`w-5 h-5 ${iconColor} ${trend !== undefined ? 'mb-0.5' : 'mb-1.5'}`} />
+        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</span>
+        <span className={`text-sm font-semibold ${valueColor}`}>{value}</span>
+        {subtitle && <span className="text-[11px] text-gray-500">{subtitle}</span>}
+        {trend !== undefined && (
+          <span
+            className={`text-[11px] font-semibold ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}
+          >
+            {trend >= 0 ? '+' : '-'}{Math.abs(trend)}%
+          </span>
+        )}
+      </Component>
+    );
+  }
 
   return (
     <Component

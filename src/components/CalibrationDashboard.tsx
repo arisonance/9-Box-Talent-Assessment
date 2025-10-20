@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { Department, Employee, EmployeePlan } from '../types';
 import type { PerformanceReview } from './PerformanceReviewModal';
-import { StatCard, Badge, DepartmentBadge } from './unified';
+import { StatCard, Badge, DepartmentBadge, EmployeeNameLink } from './unified';
 
 interface ReviewRecord {
   self?: PerformanceReview;
@@ -458,7 +458,10 @@ export default function CalibrationDashboard({
               <article key={row.employee.id} className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold text-gray-900">{row.employee.name}</p>
+                    <EmployeeNameLink
+                      employee={row.employee}
+                      className="text-base font-semibold text-gray-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                    />
                     <p className="text-xs text-gray-500">{row.employee.title || 'Role pending'}</p>
                   </div>
                   {row.department && (
@@ -589,7 +592,10 @@ export default function CalibrationDashboard({
             ) : (
               reviewQueue.map(row => (
                 <article key={`${row.employee.id}-reviews`} className="border border-gray-200 rounded-lg p-3 text-sm text-gray-700">
-                  <p className="font-semibold text-gray-900">{row.employee.name}</p>
+                  <EmployeeNameLink
+                    employee={row.employee}
+                    className="font-semibold text-gray-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                  />
                   <p className="text-xs text-gray-500 mb-2">{row.employee.title || 'Role pending'}</p>
                   <div className="flex flex-wrap gap-1 mb-3">
                     {row.issues
@@ -627,7 +633,10 @@ export default function CalibrationDashboard({
             ) : (
               alignmentQueue.map(row => (
                 <article key={`${row.employee.id}-alignment`} className="border border-gray-200 rounded-lg p-3 text-sm text-gray-700">
-                  <p className="font-semibold text-gray-900">{row.employee.name}</p>
+                  <EmployeeNameLink
+                    employee={row.employee}
+                    className="font-semibold text-gray-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                  />
                   <p className="text-xs text-gray-500 mb-2">{row.employee.title || 'Role pending'}</p>
                   <div className="flex flex-wrap gap-1 mb-3">
                     {row.issues
@@ -665,7 +674,10 @@ export default function CalibrationDashboard({
             ) : (
               followThroughQueue.map(row => (
                 <article key={`${row.employee.id}-follow`} className="border border-gray-200 rounded-lg p-3 text-sm text-gray-700">
-                  <p className="font-semibold text-gray-900">{row.employee.name}</p>
+                  <EmployeeNameLink
+                    employee={row.employee}
+                    className="font-semibold text-gray-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                  />
                   <p className="text-xs text-gray-500 mb-2">{row.employee.title || 'Role pending'}</p>
                   <div className="flex flex-wrap gap-1 mb-3">
                     {row.issues
@@ -752,7 +764,10 @@ export default function CalibrationDashboard({
                     <tr key={employee.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col">
-                          <span className="text-sm font-semibold text-gray-900">{employee.name}</span>
+                          <EmployeeNameLink
+                            employee={employee}
+                            className="text-sm font-semibold text-gray-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                          />
                           <span className="text-xs text-gray-500">{employee.title || 'Role pending'}</span>
                         </div>
                       </td>

@@ -178,3 +178,13 @@ export function getDefaultLibraryQuestions(): QuestionLibraryItem[] {
     .map((id) => getQuestionById(id))
     .filter((q): q is QuestionLibraryItem => Boolean(q));
 }
+
+export function getQuestionsByCategory(): Record<string, QuestionLibraryItem[]> {
+  const categorized: Record<string, QuestionLibraryItem[]> = {};
+  
+  QUESTION_LIBRARY.forEach(category => {
+    categorized[category.title] = category.questions;
+  });
+  
+  return categorized;
+}

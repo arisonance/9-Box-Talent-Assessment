@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from './lib/supabase';
 import type { User as AppUser, Organization } from './types';
 import Dashboard from './components/Dashboard';
-import { ToastProvider } from './components/unified';
+import { TalentAppProvider } from './context/TalentAppContext';
 
 // Fixed organization ID (no auth needed)
 const FIXED_ORG_ID = 'f8a8b8c8-d8e8-4f8f-8f8f-8f8f8f8f8f8f';
@@ -26,6 +26,21 @@ function App() {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<string>('');
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [employeePlans, setEmployeePlans] = useState<Record<string, any>>({});
+  const [performanceReviews, setPerformanceReviews] = useState<Record<string, any>>({});
+  const dashboardNavigatorRef = useRef<((view: string) => void) | null>(null);
+
+  const handleRegisterNavigator = useCallback((fn: ((view: string) => void) | null) => {
+    dashboardNavigatorRef.current = fn;
+  }, []);
+
+  const handleNavigateToView = useCallback((view: string) => {
+    setCurrentView(view);
+    dashboardNavigatorRef.current?.(view);
+  }, []);
 
   useEffect(() => {
     loadOrganization();
@@ -67,14 +82,15 @@ function App() {
     return (
       <div className="min-h-screen bg-gray-50">
         {/* Header Skeleton */}
-        <header className="bg-white border-b border-gray-200">
+        <header className="bg-white border-b border-gray-200" aria-label="Sonance Talent Management is loading">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="skeleton-text w-48 h-6"></div>
-                <div className="skeleton-text w-24 h-5"></div>
+                <span className="sr-only">Sonance Talent Management</span>
+                <div className="skeleton-text w-48 h-6" aria-hidden></div>
+                <div className="skeleton-text w-24 h-5" aria-hidden></div>
               </div>
-              <div className="skeleton-text w-32 h-10 rounded-lg"></div>
+              <div className="skeleton-text w-32 h-10 rounded-lg" aria-hidden></div>
             </div>
           </div>
         </header>
@@ -111,7 +127,7 @@ function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h2 className="text-lg font-semibold text-center mb-3 text-gray-900">Database Connection Failed</h2>
+          <h2 className="text-lg font-semibold text-center mb-3 text-gray-900">Sonance workspace unavailable</h2>
           <p className="text-sm text-gray-600 text-center mb-6">{error}</p>
 
           <div className="flex justify-center mb-6">
@@ -125,7 +141,7 @@ function App() {
 
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-sm font-medium text-amber-900 mb-2">
-              First time setup?
+              First time setting up Sonance?
             </p>
             <ol className="list-decimal list-inside text-sm text-amber-800 space-y-1">
               <li>Run <code className="px-1 py-0.5 bg-amber-100 rounded text-xs">supabase-schema.sql</code></li>
@@ -141,8 +157,8 @@ function App() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 max-w-md w-full text-center">
-          <h2 className="text-lg font-semibold mb-2 text-gray-900">Organization Not Found</h2>
-          <p className="text-sm text-gray-600 mb-6">The test organization could not be loaded.</p>
+          <h2 className="text-lg font-semibold mb-2 text-gray-900">Sonance workspace not found</h2>
+          <p className="text-sm text-gray-600 mb-6">We couldn’t load the sample organization for Sonance Talent Management.</p>
           <button
             onClick={loadOrganization}
             className="btn-primary"
@@ -155,15 +171,28 @@ function App() {
   }
 
   return (
-    <ToastProvider>
+    <TalentAppProvider
+      currentView={currentView}
+      selectedDepartments={selectedDepartments}
+      employees={employees}
+      employeePlans={employeePlans}
+      performanceReviews={performanceReviews}
+      onNavigateToView={handleNavigateToView}
+    >
       <div className="min-h-screen bg-gray-50">
-        <Dashboard 
+        <Dashboard
           user={mockUser}
           userProfile={mockUserProfile}
           organization={organization}
+          onViewChange={setCurrentView}
+          onDepartmentsChange={setSelectedDepartments}
+          onEmployeesChange={setEmployees}
+          onPlansChange={setEmployeePlans}
+          onReviewsChange={setPerformanceReviews}
+          onRegisterNavigate={handleRegisterNavigator}
         />
       </div>
-    </ToastProvider>
+    </TalentAppProvider>
   );
 }
 

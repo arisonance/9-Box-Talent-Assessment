@@ -30,6 +30,7 @@ import type {
   PIPCheckInStatus,
   ActionItem,
 } from '../types';
+import { EmployeeNameLink } from './unified';
 import { analyzePerformanceReview } from '../lib/reviewAnalyzer';
 import { composeReviewNarrative } from '../lib/reviewTextFormatter';
 import type { PerformanceReview } from './PerformanceReviewModal';
@@ -576,7 +577,13 @@ export default function PIPModal({
             <div>
               <h2 className="text-2xl font-bold">Performance Improvement Plan</h2>
               <p className="text-red-100 text-sm">
-                {employee.name} • {employee.title || 'No Title'}
+                <EmployeeNameLink
+                  employee={employee}
+                  className="font-semibold text-white hover:text-red-100 focus-visible:ring-white"
+                  onClick={(event) => event.stopPropagation()}
+                />
+                {' '}
+                • {employee.title || 'No Title'}
               </p>
             </div>
           </div>
@@ -620,7 +627,12 @@ export default function PIPModal({
                     No Active PIPs
                   </h3>
                   <p className="text-gray-500 mb-6">
-                    {employee.name} does not currently have any Performance Improvement Plans
+                    <EmployeeNameLink
+                      employee={employee}
+                      className="font-semibold text-blue-600 hover:text-blue-700 focus-visible:ring-blue-500"
+                      onClick={(event) => event.stopPropagation()}
+                    />{' '}
+                    does not currently have any Performance Improvement Plans
                   </p>
                 </div>
               ) : (

@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import type { Employee, Department } from '../types';
 import EmployeeCardUnified from './unified/EmployeeCardUnified';
 
@@ -16,8 +17,8 @@ interface EmployeeCardProps {
   employeePlan?: any;
   hasManagerReview?: boolean;
   hasSelfReview?: boolean;
-  topRightBadge?: React.ReactNode;
-  bottomBanner?: React.ReactNode;
+  topRightBadge?: ReactNode;
+  bottomBanner?: ReactNode;
   cardClassName?: string;
 }
 

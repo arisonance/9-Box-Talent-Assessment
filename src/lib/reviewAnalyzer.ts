@@ -7,13 +7,22 @@ const anthropic = new Anthropic({
   dangerouslyAllowBrowser: true
 });
 
+interface ReviewInsights {
+  strengths: string[];
+  developmentAreas: string[];
+  successMetrics: string[];
+  summary: string;
+}
+
 interface ReviewAnalysis {
   suggestedPlacement: {
     performance: Performance;
     potential: Potential;
     reasoning: string;
+    confidence?: number;
   };
   developmentPlan: Partial<EmployeePlan>;
+  insights: ReviewInsights;
 }
 
 export async function analyzePerformanceReview(
@@ -33,6 +42,7 @@ Based on this review, provide your analysis in the following JSON format:
   "performance": "low" | "medium" | "high",
   "potential": "low" | "medium" | "high",
   "reasoning": "2-3 sentence explanation of why you placed them in this box",
+  "confidence": 75,
   "strengths": ["strength 1", "strength 2", "strength 3"],
   "developmentAreas": ["area 1", "area 2", "area 3"],
   "planTitle": "A specific title for their development plan",
@@ -125,9 +135,16 @@ Return ONLY the JSON object, no additional text.`;
       suggestedPlacement: {
         performance: analysis.performance,
         potential: analysis.potential,
-        reasoning: analysis.reasoning
+        reasoning: analysis.reasoning,
+        confidence: typeof analysis.confidence === 'number' ? analysis.confidence : undefined
       },
-      developmentPlan
+      developmentPlan,
+      insights: {
+        strengths: Array.isArray(analysis.strengths) ? analysis.strengths : [],
+        developmentAreas: Array.isArray(analysis.developmentAreas) ? analysis.developmentAreas : [],
+        successMetrics: Array.isArray(analysis.successMetrics) ? analysis.successMetrics : [],
+        summary: analysis.reasoning || ''
+      }
     };
   } catch (error) {
     console.error('Error analyzing review:', error);
@@ -149,7 +166,8 @@ Return ONLY the JSON object, no additional text.`;
       suggestedPlacement: {
         performance: fallbackAnalysis.performance,
         potential: fallbackAnalysis.potential,
-        reasoning: 'Based on keyword analysis of the performance review.'
+        reasoning: 'Based on keyword analysis of the performance review.',
+        confidence: 60
       },
       developmentPlan: {
         plan_type: fallbackAnalysis.performance === 'low' ? 'performance_improvement' : 'development',
@@ -171,6 +189,16 @@ Return ONLY the JSON object, no additional text.`;
         next_review_date: nextReview.toISOString().split('T')[0],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
+      },
+      insights: {
+        strengths: ['Strong results relative to peers', 'Consistent follow-through', 'Positive stakeholder feedback'],
+        developmentAreas: ['Clarify growth plan with manager', 'Expand cross-functional influence', 'Document repeatable processes'],
+        successMetrics: [
+          'Hit next cycle KPIs',
+          'Complete all plan action items',
+          'Capture progress update in 90 days'
+        ],
+        summary: 'Generated from fallback keyword analysis. Please review and customize before finalizing.'
       }
     };
   }

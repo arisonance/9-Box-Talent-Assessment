@@ -10,12 +10,13 @@ interface DataQualityPanelProps {
 
 interface QualityIssue {
   id: string;
-  type: 'missing_assessment' | 'missing_email' | 'missing_department' | 'missing_title' | 'stale_data';
+  type: 'missing_assessment' | 'missing_email' | 'missing_department' | 'missing_title' | 'stale_data' | 'duplicate_name' | 'duplicate_email';
   severity: 'low' | 'medium' | 'high' | 'critical';
   employeeId: string;
   employeeName: string;
   description: string;
   suggestedAction: string;
+  relatedEmployeeIds?: string[];
 }
 
 export default function DataQualityPanel({ employees, departments, onFixIssue }: DataQualityPanelProps) {
@@ -28,6 +29,82 @@ export default function DataQualityPanel({ employees, departments, onFixIssue }:
 
   const detectIssues = () => {
     const detectedIssues: QualityIssue[] = [];
+
+    // Track duplicates
+    const nameMap = new Map<string, Employee[]>();
+    const emailMap = new Map<string, Employee[]>();
+    const processedDuplicates = new Set<string>();
+
+    // Build maps for duplicate detection
+    employees.forEach(employee => {
+      // Track by name (case-insensitive, trimmed)
+      const normalizedName = employee.name.toLowerCase().trim();
+      if (!nameMap.has(normalizedName)) {
+        nameMap.set(normalizedName, []);
+      }
+      nameMap.get(normalizedName)!.push(employee);
+
+      // Track by email (case-insensitive, trimmed, only if email exists)
+      if (employee.email && employee.email.trim() !== '') {
+        const normalizedEmail = employee.email.toLowerCase().trim();
+        if (!emailMap.has(normalizedEmail)) {
+          emailMap.set(normalizedEmail, []);
+        }
+        emailMap.get(normalizedEmail)!.push(employee);
+      }
+    });
+
+    // Detect duplicate names
+    nameMap.forEach((duplicates, name) => {
+      if (duplicates.length > 1) {
+        const allIds = duplicates.map(e => e.id).sort().join('-');
+        if (!processedDuplicates.has(`name-${allIds}`)) {
+          processedDuplicates.add(`name-${allIds}`);
+          duplicates.forEach(employee => {
+            const otherNames = duplicates
+              .filter(e => e.id !== employee.id)
+              .map(e => e.name)
+              .join(', ');
+            detectedIssues.push({
+              id: `${employee.id}-duplicate-name`,
+              type: 'duplicate_name',
+              severity: 'high',
+              employeeId: employee.id,
+              employeeName: employee.name,
+              description: `Duplicate name found: also exists as ${otherNames}`,
+              suggestedAction: 'Review and merge duplicate records or update name if different person',
+              relatedEmployeeIds: duplicates.filter(e => e.id !== employee.id).map(e => e.id),
+            });
+          });
+        }
+      }
+    });
+
+    // Detect duplicate emails
+    emailMap.forEach((duplicates, email) => {
+      if (duplicates.length > 1) {
+        const allIds = duplicates.map(e => e.id).sort().join('-');
+        if (!processedDuplicates.has(`email-${allIds}`)) {
+          processedDuplicates.add(`email-${allIds}`);
+          duplicates.forEach(employee => {
+            const otherNames = duplicates
+              .filter(e => e.id !== employee.id)
+              .map(e => e.name)
+              .join(', ');
+            detectedIssues.push({
+              id: `${employee.id}-duplicate-email`,
+              type: 'duplicate_email',
+              severity: 'critical',
+              employeeId: employee.id,
+              employeeName: employee.name,
+              description: `Duplicate email (${email}): also used by ${otherNames}`,
+              suggestedAction: 'Merge duplicate records or update email - emails must be unique',
+              relatedEmployeeIds: duplicates.filter(e => e.id !== employee.id).map(e => e.id),
+            });
+          });
+        }
+      }
+    });
 
     employees.forEach(employee => {
       // Missing assessment

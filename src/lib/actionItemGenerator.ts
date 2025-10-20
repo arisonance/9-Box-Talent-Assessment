@@ -441,6 +441,132 @@ const getActionItemTemplates = (
 };
 
 // Generate actionable items with calculated due dates
+// Generate retention-specific action items based on risk factors
+export const generateRetentionActionItems = (
+  riskFactors: string[],
+  riskLevel: 'high' | 'medium' | 'low'
+): ActionItemTemplate[] => {
+  const items: ActionItemTemplate[] = [
+    {
+      description: 'Conduct stay interview to understand motivations and concerns',
+      skillArea: 'Retention',
+      priority: riskLevel === 'high' ? 'high' : 'medium',
+      daysToComplete: 7,
+      estimatedHours: 1,
+      owner: 'Manager',
+    },
+  ];
+
+  // Add items based on specific risk factors
+  if (riskFactors.some(f => f.toLowerCase().includes('career') || f.toLowerCase().includes('growth'))) {
+    items.push({
+      description: 'Create career development roadmap with clear promotion timeline',
+      skillArea: 'Career Development',
+      priority: 'high',
+      daysToComplete: 14,
+      estimatedHours: 3,
+      owner: 'Manager',
+    });
+    items.push({
+      description: 'Identify and discuss stretch assignment opportunities',
+      skillArea: 'Career Growth',
+      priority: 'high',
+      daysToComplete: 21,
+      estimatedHours: 2,
+      owner: 'Manager',
+    });
+  }
+
+  if (riskFactors.some(f => f.toLowerCase().includes('tenure') || f.toLowerCase().includes('new'))) {
+    items.push({
+      description: 'Schedule regular check-in meetings (weekly for first 3 months)',
+      skillArea: 'Onboarding',
+      priority: 'high',
+      daysToComplete: 7,
+      estimatedHours: 1,
+      owner: 'Manager',
+    });
+    items.push({
+      description: 'Assign mentor or buddy for additional support',
+      skillArea: 'Mentorship',
+      priority: 'medium',
+      daysToComplete: 14,
+      estimatedHours: 1,
+      owner: 'HR',
+    });
+  }
+
+  if (riskFactors.some(f => f.toLowerCase().includes('top talent') || f.toLowerCase().includes('high perf'))) {
+    items.push({
+      description: 'Review and adjust compensation to market competitive levels',
+      skillArea: 'Compensation',
+      priority: 'high',
+      daysToComplete: 30,
+      estimatedHours: 2,
+      owner: 'HR',
+    });
+    items.push({
+      description: 'Discuss LTIP eligibility and long-term incentive opportunities',
+      skillArea: 'Compensation',
+      priority: 'high',
+      daysToComplete: 30,
+      estimatedHours: 2,
+      owner: 'HR',
+    });
+    items.push({
+      description: 'Present visibility opportunities (presentations, high-profile projects)',
+      skillArea: 'Recognition',
+      priority: 'medium',
+      daysToComplete: 30,
+      estimatedHours: 5,
+      owner: 'Manager',
+    });
+  }
+
+  if (riskFactors.some(f => f.toLowerCase().includes('plan') || f.toLowerCase().includes('development'))) {
+    items.push({
+      description: 'Create personalized development plan with clear milestones',
+      skillArea: 'Development',
+      priority: 'high',
+      daysToComplete: 14,
+      estimatedHours: 3,
+      owner: 'Manager',
+    });
+  }
+
+  if (riskLevel === 'high') {
+    items.push({
+      description: 'Executive/senior leader to have retention conversation',
+      skillArea: 'Retention',
+      priority: 'high',
+      daysToComplete: 7,
+      estimatedHours: 1,
+      owner: 'Manager',
+    });
+  }
+
+  // General retention items
+  items.push({
+    description: 'Solicit and address feedback on work-life balance and workload',
+    skillArea: 'Work-Life Balance',
+    priority: riskLevel === 'high' ? 'high' : 'medium',
+    daysToComplete: 14,
+    estimatedHours: 1,
+    owner: 'Manager',
+  });
+
+  items.push({
+    description: 'Recognize recent accomplishments publicly (team meeting, company update)',
+    skillArea: 'Recognition',
+    priority: 'medium',
+    daysToComplete: 7,
+    estimatedHours: 0.5,
+    owner: 'Manager',
+  });
+
+  return items;
+};
+
 export const generateSmartActionItems = (
   performance: Performance | null,
   potential: Potential | null,

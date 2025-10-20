@@ -1,9 +1,12 @@
-import { ReactNode, MouseEvent } from 'react';
+import type { ReactNode, MouseEvent } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { MoreVertical, User, MapPin, Mail, FileText, ClipboardList, Users, MessageSquare, Building2, Calendar } from 'lucide-react';
+import { MoreVertical, User, MapPin, Mail, FileText, ClipboardList, MessageSquare, Building2, Pin, PinOff, Shield } from 'lucide-react';
 import type { Employee, Department } from '../../types';
 import { PerformanceBadge, PotentialBadge, DepartmentBadge, StatusBadge, ProgressBadge } from './BadgeSystem';
+import { useEmployeeFocus } from '../../context/EmployeeFocusContext';
+import WorkflowProgressWidget from '../WorkflowProgressWidget';
+import EmployeeNameLink from './EmployeeNameLink';
 
 interface EmployeeCardUnifiedProps {
   employee: Employee;
@@ -48,6 +51,9 @@ export default function EmployeeCardUnified({
   cardClassName = '',
   enableDrag = true,
 }: EmployeeCardUnifiedProps) {
+  const { pinEmployee, unpinEmployee, isPinned } = useEmployeeFocus();
+  const pinned = isPinned(employee.id);
+  
   const {
     attributes,
     listeners,
@@ -122,7 +128,7 @@ export default function EmployeeCardUnified({
         {...(enableDrag ? attributes : {})}
         onClick={handleCardClick}
         className={`
-          group bg-white border-2 border-gray-200 rounded-lg p-4 transition-all cursor-pointer
+          relative group bg-white border-2 border-gray-200 rounded-lg p-4 transition-all cursor-pointer
           hover:border-blue-200 hover:shadow-md
           ${isDragActive ? 'opacity-50 scale-105 z-50 shadow-lg' : ''}
           ${isDragging ? 'opacity-50' : ''}
@@ -130,7 +136,7 @@ export default function EmployeeCardUnified({
         `}
         title="Click to view employee details"
       >
-        <div className="flex justify-between items-start">
+        <div className="flex items-start justify-between gap-4">
           <div className="flex items-center space-x-3 flex-1">
             {/* Avatar */}
             <div className={`w-12 h-12 rounded-full ${getAvatarColor(employee.name)} flex items-center justify-center shadow-md flex-shrink-0`}>
@@ -141,10 +147,18 @@ export default function EmployeeCardUnified({
 
             {/* Content */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center mb-2">
-                <h3 className="font-semibold text-gray-900">{employee.name}</h3>
+              <div className="space-y-1">
+                <h3 className="font-semibold text-gray-900 whitespace-normal leading-tight">
+                  <EmployeeNameLink
+                    employee={employee}
+                    className="hover:text-blue-600 focus-visible:ring-blue-500"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  />
+                </h3>
                 {employee.employee_id && (
-                  <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">
+                  <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">
                     {employee.employee_id}
                   </span>
                 )}
@@ -154,26 +168,26 @@ export default function EmployeeCardUnified({
                 {employee.title && (
                   <div className="flex items-center">
                     <Building2 className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
-                    <span className="truncate">{employee.title}</span>
+                    <span className="whitespace-normal">{employee.title}</span>
                   </div>
                 )}
                 {employee.email && (
                   <div className="flex items-center">
                     <Mail className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
-                    <span className="truncate">{employee.email}</span>
+                    <span className="whitespace-normal">{employee.email}</span>
                   </div>
                 )}
                 {employee.location && (
                   <div className="flex items-center">
                     <MapPin className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
-                    <span className="truncate">{employee.location}</span>
+                    <span className="whitespace-normal">{employee.location}</span>
                   </div>
                 )}
                 {employee.manager_name && (
                   <div className="flex items-center">
                     <User className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
-                    <span className="truncate">Manager: {employee.manager_name}</span>
-                  </div>
+                    <span className="whitespace-normal">Manager: {employee.manager_name}</span>
+              </div>
                 )}
               </div>
 
@@ -190,14 +204,72 @@ export default function EmployeeCardUnified({
               )}
             </div>
           </div>
-
-          {/* Department Badge */}
-          <div className="flex-shrink-0 ml-4">
+          {/* Meta badges */}
+          <div className="flex flex-col items-end gap-2">
+            {topRightBadge && (
+              <div className="translate-y-0.5">
+                {topRightBadge}
+              </div>
+            )}
             {department && (
               <DepartmentBadge name={department.name} color={department.color} />
             )}
           </div>
         </div>
+
+        {/* Review status */}
+        {employee.assessment && (hasManagerReview || hasSelfReview) && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {hasManagerReview && <StatusBadge status="completed" size="sm" showIcon={false} />}
+            {hasSelfReview && <StatusBadge status="active" size="sm" showIcon={false} />}
+          </div>
+        )}
+
+        {/* Retention Plan Indicator */}
+        {employeePlan?.plan_type === 'retention' && (
+          <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span className="text-xs font-semibold text-amber-900">Retention Plan</span>
+              {employeePlan.retention_data && (
+                <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  employeePlan.retention_data.risk_level === 'high' ? 'bg-red-100 text-red-700' :
+                  employeePlan.retention_data.risk_level === 'medium' ? 'bg-amber-100 text-amber-700' :
+                  'bg-green-100 text-green-700'
+                }`}>
+                  {employeePlan.retention_data.risk_level.toUpperCase()} RISK
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Plan progress */}
+        {planStatus && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-gray-600">Plan Progress</span>
+              <ProgressBadge progress={planStatus.progress} size="sm" />
+            </div>
+            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  planStatus.type === 'complete' ? 'bg-green-500' :
+                  planStatus.type === 'in-progress' ? 'bg-yellow-500' :
+                  'bg-blue-500'
+                }`}
+                style={{ width: `${planStatus.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Supplemental content */}
+        {bottomBanner && (
+          <div className="mt-3 w-full">
+            {bottomBanner}
+          </div>
+        )}
       </div>
     );
   }
@@ -236,14 +308,27 @@ export default function EmployeeCardUnified({
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 truncate">
-              {employee.name}
-            </p>
-            {employee.title && (
-              <p className="text-xs text-gray-600 truncate font-medium">
-                {employee.title}
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-900 whitespace-normal leading-tight">
+                <EmployeeNameLink
+                  employee={employee}
+                  className="text-sm font-semibold text-gray-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                />
               </p>
-            )}
+              {topRightBadge && (
+                <div className="flex-shrink-0 translate-y-0.5">
+                  {topRightBadge}
+                </div>
+              )}
+            </div>
+              {employee.title && (
+                <p className="text-xs text-gray-600 whitespace-normal font-medium">
+                  {employee.title}
+                </p>
+              )}
             {department && (
               <div className="mt-1">
                 <DepartmentBadge name={department.name} color={department.color} size="sm" />
@@ -252,11 +337,7 @@ export default function EmployeeCardUnified({
           </div>
         </div>
 
-        {topRightBadge && (
-          <div className="absolute top-2 right-2 z-10">
-            {topRightBadge}
-          </div>
-        )}
+        {/* topRightBadge is rendered inline above */}
       </div>
     );
   }
@@ -285,6 +366,32 @@ export default function EmployeeCardUnified({
       `}
       title="Click to view employee details"
     >
+      {/* Pin button - top right */}
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (pinned) {
+              unpinEmployee(employee.id);
+            } else {
+              pinEmployee(employee, 'grid-card');
+            }
+          }}
+          className={`p-1.5 rounded-lg transition-colors shadow-sm ${
+            pinned
+              ? 'bg-blue-100 text-blue-600 hover:bg-blue-200 opacity-100'
+              : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+          }`}
+          title={pinned ? 'Unpin from context bar' : 'Pin to context bar'}
+        >
+          {pinned ? (
+            <PinOff className="w-3.5 h-3.5" />
+          ) : (
+            <Pin className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+
       <div className="flex items-start space-x-3">
         {/* Avatar */}
         <div className="relative flex-shrink-0">
@@ -313,20 +420,27 @@ export default function EmployeeCardUnified({
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-w-0">
-          {/* Name and Title */}
-          <div className="mb-2">
-            <p className="text-sm font-semibold text-gray-900 truncate">
-              {employee.name}
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-gray-900 whitespace-normal leading-tight">
+              <EmployeeNameLink
+                employee={employee}
+                className="text-lg font-semibold text-gray-900 hover:text-blue-600 focus-visible:ring-blue-500"
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+              />
             </p>
             {employee.title && (
-              <p className="text-xs text-gray-600 truncate font-medium">
+              <p className="text-xs text-gray-600 whitespace-normal font-medium">
                 {employee.title}
               </p>
             )}
+            {topRightBadge && (
+              <div className="pt-1">{topRightBadge}</div>
+            )}
           </div>
 
-          {/* Department and Location */}
           <div className="space-y-1">
             {department && (
               <div className="flex items-center space-x-1">
@@ -334,7 +448,7 @@ export default function EmployeeCardUnified({
                   className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{ backgroundColor: department.color }}
                 />
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-xs text-gray-500 whitespace-normal">
                   {department.name}
                 </p>
               </div>
@@ -343,7 +457,7 @@ export default function EmployeeCardUnified({
             {employee.location && (
               <div className="flex items-center space-x-1">
                 <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-xs text-gray-500 whitespace-normal">
                   {employee.location}
                 </p>
               </div>
@@ -393,6 +507,11 @@ export default function EmployeeCardUnified({
               </div>
             </div>
           )}
+
+          {/* Workflow Progress - shows overall talent cycle progress */}
+          <div className="mt-3">
+            <WorkflowProgressWidget employeeId={employee.id} variant="compact" />
+          </div>
         </div>
 
         {/* Action buttons - shows for assessed employees */}
@@ -492,13 +611,6 @@ export default function EmployeeCardUnified({
           <div className="text-blue-600 text-xs font-medium bg-white px-2 py-1 rounded shadow-sm">
             Dragging...
           </div>
-        </div>
-      )}
-
-      {/* Custom top-right badge overlay */}
-      {topRightBadge && (
-        <div className="absolute top-2 right-2 z-10">
-          {topRightBadge}
         </div>
       )}
 

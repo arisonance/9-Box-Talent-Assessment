@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Sparkles, Loader, TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import type { PerformanceReview } from './PerformanceReviewModal';
-import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicClient, isAnthropicConfigured } from '../lib/anthropicService';
 
 interface TeamPlayerCoachingModalProps {
   isOpen: boolean;
@@ -28,8 +28,10 @@ export default function TeamPlayerCoachingModal({
 }: TeamPlayerCoachingModalProps) {
   const [coaching, setCoaching] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const anthropicAvailable = isAnthropicConfigured();
+  const [anthropicWarning, setAnthropicWarning] = useState<string | null>(
+    anthropicAvailable ? null : 'Anthropic API key not configured. Add VITE_ANTHROPIC_API_KEY to enable AI coaching.'
+  );
 
   // Calculate score differences
   const calculateDifferences = (): ScoreDifference[] => {
@@ -86,26 +88,17 @@ export default function TeamPlayerCoachingModal({
   const differences = calculateDifferences();
 
   const generateCoaching = async () => {
-    const savedKey = localStorage.getItem('anthropic_api_key');
-    if (!savedKey && !apiKey) {
-      setShowApiKeyInput(true);
-      return;
-    }
-
-    const keyToUse = apiKey || savedKey;
-    if (!keyToUse) {
-      setShowApiKeyInput(true);
+    if (!anthropicAvailable) {
+      setAnthropicWarning('Anthropic API key not configured. Add VITE_ANTHROPIC_API_KEY to enable AI coaching.');
       return;
     }
 
     setIsGenerating(true);
     setCoaching('');
+    setAnthropicWarning(null);
 
     try {
-      const anthropic = new Anthropic({
-        apiKey: keyToUse,
-        dangerouslyAllowBrowser: true
-      });
+      const anthropic = getAnthropicClient();
 
       const prompt = `You are an executive coach helping a manager prepare for a performance review discussion. There are score differences between the manager's assessment and the employee's self-assessment on the Ideal Team Player framework.
 
@@ -155,16 +148,10 @@ Format your response in clear sections with actionable advice. Be empathetic, pr
       }
     } catch (error: any) {
       console.error('Error generating coaching:', error);
-      alert(`Failed to generate coaching: ${error.message}`);
+      const message = error instanceof Error ? error.message : 'Failed to generate coaching.';
+      setAnthropicWarning(message);
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  const saveApiKey = () => {
-    if (apiKey.trim()) {
-      localStorage.setItem('anthropic_api_key', apiKey.trim());
-      setShowApiKeyInput(false);
     }
   };
 
@@ -189,25 +176,9 @@ Format your response in clear sections with actionable advice. Be empathetic, pr
           </button>
         </div>
 
-        {/* API Key Input */}
-        {showApiKeyInput && (
-          <div className="p-6 bg-yellow-50 border-b border-yellow-200">
-            <h3 className="text-sm font-semibold text-yellow-900 mb-2">Anthropic API Key Required</h3>
-            <div className="flex space-x-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="flex-1 px-3 py-2 border border-yellow-300 rounded text-sm"
-              />
-              <button
-                onClick={saveApiKey}
-                className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm font-medium"
-              >
-                Save Key
-              </button>
-            </div>
+        {anthropicWarning && (
+          <div className="p-6 bg-amber-50 border-b border-amber-200 text-sm text-amber-900">
+            {anthropicWarning}
           </div>
         )}
 

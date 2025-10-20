@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Target, UserPlus } from 'lucide-react';
-import type { Employee, Department } from '../types';
+import type { Employee, Department, EmployeePlan } from '../types';
 import PlansDashboard from './PlansDashboard';
+import OnboardingDashboard from './OnboardingDashboard';
 import { NavigationTabs } from './unified';
 
 interface DevelopmentDashboardProps {
   employees: Employee[];
   departments: Department[];
-  employeePlans: Record<string, any>;
+  employeePlans: Record<string, EmployeePlan>;
   onEmployeeClick: (employee: Employee) => void;
+  onOpenPlanModal?: (employee: Employee) => void;
   activeDepartmentIds?: string[];
 }
 
@@ -19,6 +21,7 @@ export default function DevelopmentDashboard({
   departments,
   employeePlans,
   onEmployeeClick,
+  onOpenPlanModal,
   activeDepartmentIds = [],
 }: DevelopmentDashboardProps) {
   const [activeView, setActiveView] = useState<DevelopmentView>('plans');
@@ -63,22 +66,16 @@ export default function DevelopmentDashboard({
               departments={scopedDepartments}
               employeePlans={employeePlans}
               onEmployeeClick={onEmployeeClick}
+              onOpenPlanModal={onOpenPlanModal}
             />
           )}
 
           {activeView === 'onboarding' && (
-            <div className="text-center py-12">
-              <UserPlus className="w-16 h-16 text-purple-600 mx-auto mb-4" />
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                Onboarding Excellence
-              </h3>
-              <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                Manage 90-day systematic onboarding plans with multi-stakeholder accountability and milestone tracking
-              </p>
-              <button className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all">
-                Coming Soon
-              </button>
-            </div>
+            <OnboardingDashboard
+              employees={scopedEmployees}
+              departments={scopedDepartments}
+              onEmployeeClick={onEmployeeClick}
+            />
           )}
         </div>
       </div>
