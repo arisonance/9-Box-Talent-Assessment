@@ -225,7 +225,7 @@ function AppWithData({
   onEmployeesChange: (employees: any[]) => void;
   onPlansChange: (plans: Record<string, any>) => void;
   onReviewsChange: (reviews: Record<string, any>) => void;
-  handleRegisterNavigator: (fn: ((view: string) => void) => void | null) => void;
+  handleRegisterNavigator: (fn: ((view: string) => void) | null) => void;
   handleNavigateToView: (view: string) => void;
 }) {
   const data = useData();
