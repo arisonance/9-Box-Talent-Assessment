@@ -35,6 +35,7 @@ import { calculatePlanProgress, getOverdueActionItems } from '../lib/actionItemG
 import ExecutiveWelcomeWizard from './ExecutiveWelcomeWizard';
 import TeamProgressDashboard from './TeamProgressDashboard';
 import Survey360Wizard from './Survey360Wizard';
+import AnalyticsDashboard from './AnalyticsDashboard';
 
 interface DashboardProps {
   user: SupabaseUser;
@@ -1851,6 +1852,27 @@ export default function Dashboard({
 
             {currentView === 'insights' && (
               <div className={`${shellClass} space-y-6`}>
+                <AnalyticsDashboard
+                  employees={employees}
+                  departments={departments}
+                  employeePlans={employeePlans}
+                  surveys360={[]}
+                  pips={{}}
+                  successionCandidates={[]}
+                  oneOnOnes={[]}
+                  onNavigate={(view, employeeId) => {
+                    if (employeeId) {
+                      const employee = employees.find(e => e.id === employeeId);
+                      if (employee) {
+                        setDetailModalEmployee(employee);
+                        setIsDetailModalOpen(true);
+                      }
+                    } else {
+                      handleViewNavigation(view);
+                    }
+                  }}
+                />
+
                 <ExecutiveCommandCenter
                   employees={employees}
                   performanceReviews={performanceReviews}
