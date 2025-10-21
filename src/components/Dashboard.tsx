@@ -36,6 +36,7 @@ import ExecutiveWelcomeWizard from './ExecutiveWelcomeWizard';
 import TeamProgressDashboard from './TeamProgressDashboard';
 import Survey360Wizard from './Survey360Wizard';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import LearningDashboard from './LearningDashboard';
 
 interface DashboardProps {
   user: SupabaseUser;
@@ -51,7 +52,7 @@ interface DashboardProps {
 
 type View = 'welcome' | 'team' | 'reviews' | 'insights' | 'settings';
 type PeopleFilter = 'all' | 'assessed' | 'watchlist';
-type ProgramHubView = 'development' | 'onboarding' | 'feedback360' | 'calibration' | 'workflow';
+type ProgramHubView = 'development' | 'onboarding' | 'feedback360' | 'calibration' | 'workflow' | 'learning';
 type CommandFocus = 'overview' | 'attention';
 
 export default function Dashboard({
@@ -1800,6 +1801,7 @@ export default function Dashboard({
                 <NavigationTabs
                   tabs={[
                     { id: 'development', label: 'Development Plans', icon: ClipboardList },
+                    { id: 'learning', label: 'Learning & Courses', icon: Award },
                     { id: 'feedback360', label: '360 Feedback', icon: Users },
                     { id: 'onboarding', label: 'Onboarding', icon: UserPlus },
                     { id: 'calibration', label: 'Calibration', icon: GitBranch },
@@ -1818,6 +1820,20 @@ export default function Dashboard({
                     onOpenPlan={(employee) => {
                       setPlanTargetEmployee(employee);
                       setIsPlanModalOpen(true);
+                    }}
+                  />
+                )}
+
+                {programsView === 'learning' && (
+                  <LearningDashboard
+                    employees={employees}
+                    employeePlans={employeePlans}
+                    onEnroll={(employeeId, resourceId) => {
+                      notify({
+                        title: 'Enrolled Successfully',
+                        description: 'Employee has been enrolled in the course',
+                        variant: 'success'
+                      });
                     }}
                   />
                 )}
