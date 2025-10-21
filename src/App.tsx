@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import type { User as AppUser, Organization } from './types';
 import Dashboard from './components/Dashboard';
 import { TalentAppProvider } from './context/TalentAppContext';
+import { DataProvider, useData } from './context/DataContext';
 
 // Fixed organization ID (no auth needed)
 const FIXED_ORG_ID = 'f8a8b8c8-d8e8-4f8f-8f8f-8f8f8f8f8f8f';
@@ -171,12 +172,89 @@ function App() {
   }
 
   return (
+    <DataProvider organizationId={organization.id}>
+      <AppWithData
+        organization={organization}
+        mockUser={mockUser}
+        mockUserProfile={mockUserProfile}
+        currentView={currentView}
+        selectedDepartments={selectedDepartments}
+        employees={employees}
+        employeePlans={employeePlans}
+        performanceReviews={performanceReviews}
+        onViewChange={setCurrentView}
+        onDepartmentsChange={setSelectedDepartments}
+        onEmployeesChange={setEmployees}
+        onPlansChange={setEmployeePlans}
+        onReviewsChange={setPerformanceReviews}
+        handleRegisterNavigator={handleRegisterNavigator}
+        handleNavigateToView={handleNavigateToView}
+      />
+    </DataProvider>
+  );
+}
+
+// Wrapper component that accesses DataContext
+function AppWithData({
+  organization,
+  mockUser,
+  mockUserProfile,
+  currentView,
+  selectedDepartments,
+  employees,
+  employeePlans,
+  performanceReviews,
+  onViewChange,
+  onDepartmentsChange,
+  onEmployeesChange,
+  onPlansChange,
+  onReviewsChange,
+  handleRegisterNavigator,
+  handleNavigateToView,
+}: {
+  organization: any;
+  mockUser: any;
+  mockUserProfile: any;
+  currentView: string;
+  selectedDepartments: string[];
+  employees: any[];
+  employeePlans: Record<string, any>;
+  performanceReviews: Record<string, any>;
+  onViewChange: (view: string) => void;
+  onDepartmentsChange: (departments: string[]) => void;
+  onEmployeesChange: (employees: any[]) => void;
+  onPlansChange: (plans: Record<string, any>) => void;
+  onReviewsChange: (reviews: Record<string, any>) => void;
+  handleRegisterNavigator: (fn: ((view: string) => void) => void | null) => void;
+  handleNavigateToView: (view: string) => void;
+}) {
+  const data = useData();
+
+  // Sync DataContext to App state for backward compatibility
+  useEffect(() => {
+    onEmployeesChange(data.employees);
+  }, [data.employees, onEmployeesChange]);
+
+  useEffect(() => {
+    onPlansChange(data.employeePlans);
+  }, [data.employeePlans, onPlansChange]);
+
+  useEffect(() => {
+    onReviewsChange(data.performanceReviews);
+  }, [data.performanceReviews, onReviewsChange]);
+
+  return (
     <TalentAppProvider
       currentView={currentView}
       selectedDepartments={selectedDepartments}
-      employees={employees}
-      employeePlans={employeePlans}
-      performanceReviews={performanceReviews}
+      employees={data.employees}
+      employeePlans={data.employeePlans}
+      performanceReviews={data.performanceReviews}
+      surveys360={data.surveys360}
+      pips={data.pips}
+      successionCandidates={data.successionCandidates}
+      managerNotes={data.managerNotes}
+      oneOnOnes={data.oneOnOnes}
       onNavigateToView={handleNavigateToView}
     >
       <div className="min-h-screen bg-gray-50">
@@ -184,11 +262,11 @@ function App() {
           user={mockUser}
           userProfile={mockUserProfile}
           organization={organization}
-          onViewChange={setCurrentView}
-          onDepartmentsChange={setSelectedDepartments}
-          onEmployeesChange={setEmployees}
-          onPlansChange={setEmployeePlans}
-          onReviewsChange={setPerformanceReviews}
+          onViewChange={onViewChange}
+          onDepartmentsChange={onDepartmentsChange}
+          onEmployeesChange={onEmployeesChange}
+          onPlansChange={onPlansChange}
+          onReviewsChange={onReviewsChange}
           onRegisterNavigate={handleRegisterNavigator}
         />
       </div>

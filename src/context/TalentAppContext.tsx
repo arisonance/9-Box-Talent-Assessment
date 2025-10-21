@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import type { Employee, EmployeePlan, Performance, Potential, PlanType } from '../types';
 import { getAnthropicClient, isAnthropicConfigured } from '../lib/anthropicService';
+import { workflowEngine, generateCrossFeatureInsights } from '../lib/workflowAutomation';
+import type { Survey360, PIP, SuccessionCandidate, ManagerNote } from './DataContext';
 
 // ============================================
 // TYPES & INTERFACES
@@ -274,6 +276,11 @@ export function TalentAppProvider({
   currentView = '',
   selectedDepartments = [],
   onNavigateToView,
+  surveys360 = [],
+  pips = {},
+  successionCandidates = [],
+  managerNotes = {},
+  oneOnOnes = {},
 }: {
   children: ReactNode;
   employees?: Employee[];
@@ -282,6 +289,11 @@ export function TalentAppProvider({
   currentView?: string;
   selectedDepartments?: string[];
   onNavigateToView?: (view: string) => void;
+  surveys360?: Survey360[];
+  pips?: Record<string, PIP>;
+  successionCandidates?: SuccessionCandidate[];
+  managerNotes?: Record<string, ManagerNote[]>;
+  oneOnOnes?: Record<string, any[]>;
 }) {
   // ============ Toast State ============
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
@@ -367,6 +379,11 @@ export function TalentAppProvider({
       focusedEmployees: focusedEmployees.map(f => f.employee),
       workflowContext,
       dismissedSuggestions: storageState.dismissedSuggestions,
+      surveys360,
+      pips,
+      successionCandidates,
+      managerNotes,
+      oneOnOnes,
     });
 
     setSuggestions(prev => {
@@ -375,7 +392,19 @@ export function TalentAppProvider({
       }
       return newSuggestions;
     });
-  }, [employees, employeePlans, performanceReviews, focusedEmployees, workflowContext, storageState.dismissedSuggestions]);
+  }, [
+    employees,
+    employeePlans,
+    performanceReviews,
+    focusedEmployees,
+    workflowContext,
+    storageState.dismissedSuggestions,
+    surveys360,
+    pips,
+    successionCandidates,
+    managerNotes,
+    oneOnOnes,
+  ]);
 
   // ============================================
   // TOAST CALLBACKS
@@ -906,6 +935,11 @@ function generateSuggestions(data: {
   focusedEmployees: Employee[];
   workflowContext: WorkflowContext;
   dismissedSuggestions: Record<string, number>;
+  surveys360?: Survey360[];
+  pips?: Record<string, PIP>;
+  successionCandidates?: SuccessionCandidate[];
+  managerNotes?: Record<string, ManagerNote[]>;
+  oneOnOnes?: Record<string, any[]>;
 }): AICoachSuggestion[] {
   const suggestions: AICoachSuggestion[] = [];
   const { currentView, selectedDepartments } = data.workflowContext;
@@ -921,6 +955,55 @@ function generateSuggestions(data: {
     const hoursSinceDismissal = (Date.now() - dismissedAt) / (1000 * 60 * 60);
     return hoursSinceDismissal < 24;
   };
+
+  // ============================================
+  // WORKFLOW AUTOMATION SUGGESTIONS
+  // ============================================
+  if (data.surveys360 && data.pips && data.successionCandidates && data.managerNotes && data.oneOnOnes) {
+    try {
+      const workflowSuggestions = workflowEngine.evaluateAll({
+        employees: filteredEmployees,
+        employeePlans: data.employeePlans,
+        performanceReviews: data.performanceReviews,
+        surveys360: data.surveys360,
+        pips: data.pips,
+        successionCandidates: data.successionCandidates,
+        managerNotes: data.managerNotes,
+        oneOnOnes: data.oneOnOnes,
+      });
+
+      // Filter out dismissed suggestions
+      const activeSuggestions = workflowSuggestions.filter(s => !isDismissedRecently(s.id));
+      suggestions.push(...activeSuggestions);
+    } catch (error) {
+      console.error('Error generating workflow suggestions:', error);
+    }
+  }
+
+  // ============================================
+  // CROSS-FEATURE INSIGHTS
+  // ============================================
+  if (data.surveys360 && data.successionCandidates) {
+    try {
+      const insights = generateCrossFeatureInsights({
+        employees: filteredEmployees,
+        employeePlans: data.employeePlans,
+        performanceReviews: data.performanceReviews,
+        surveys360: data.surveys360,
+        successionCandidates: data.successionCandidates,
+      });
+
+      // Filter out dismissed insights
+      const activeInsights = insights.filter(s => !isDismissedRecently(s.id));
+      suggestions.push(...activeInsights);
+    } catch (error) {
+      console.error('Error generating cross-feature insights:', error);
+    }
+  }
+
+  // ============================================
+  // VIEW-SPECIFIC SUGGESTIONS
+  // ============================================
 
   // EVALUATE VIEW - Focus on assessment
   if (currentView === 'evaluate') {
@@ -965,7 +1048,9 @@ function generateSuggestions(data: {
     }
   }
 
-  // Focused employee suggestions
+  // ============================================
+  // FOCUSED EMPLOYEE SUGGESTIONS
+  // ============================================
   if (data.focusedEmployees.length > 0) {
     const focusedEmployee = data.focusedEmployees[0];
     const hasPlan = !!data.employeePlans[focusedEmployee.id];
@@ -994,6 +1079,14 @@ function generateSuggestions(data: {
     }
   }
 
-  return suggestions;
+  // Deduplicate suggestions by ID and sort by priority
+  const uniqueSuggestions = Array.from(
+    new Map(suggestions.map(s => [s.id, s])).values()
+  );
+
+  return uniqueSuggestions.sort((a, b) => {
+    const priorityOrder = { high: 0, medium: 1, low: 2 };
+    return priorityOrder[a.priority] - priorityOrder[b.priority];
+  });
 }
 
