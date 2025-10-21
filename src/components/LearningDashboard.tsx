@@ -24,6 +24,8 @@ import {
   generateCourseRecommendations,
   SAMPLE_LEARNING_LIBRARY
 } from '../lib/learningRecommendations';
+import SkillsMatrix from './SkillsMatrix';
+import CourseDetailModal from './CourseDetailModal';
 
 interface LearningDashboardProps {
   employees: Employee[];
@@ -38,14 +40,56 @@ export default function LearningDashboard({
   onEnroll,
   onViewCourse
 }: LearningDashboardProps) {
-  const [selectedView, setSelectedView] = useState<'recommended' | 'catalog' | 'my-learning' | 'team'>('recommended');
+  const [selectedView, setSelectedView] = useState<'recommended' | 'catalog' | 'my-learning' | 'team' | 'skills'>('recommended');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
     employees.find(e => e.assessment) || employees[0] || null
   );
 
-  // Mock enrollments (would come from database)
-  const [enrollments] = useState<LearningEnrollment[]>([]);
+  // Course detail modal
+  const [selectedCourse, setSelectedCourse] = useState<LearningResource | null>(null);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<CourseRecommendation | undefined>();
+  const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
+
+  // Enrollment state (in real app, this would come from database)
+  const [enrollments, setEnrollments] = useState<LearningEnrollment[]>([]);
+
+  // Handle enrollment
+  const handleEnroll = (employeeId: string, resourceId: string) => {
+    // Check if already enrolled
+    const existing = enrollments.find(e =>
+      e.employee_id === employeeId && e.resource_id === resourceId
+    );
+
+    if (existing) {
+      return; // Already enrolled
+    }
+
+    // Create new enrollment
+    const newEnrollment: LearningEnrollment = {
+      id: `enrollment-${Date.now()}-${Math.random()}`,
+      employee_id: employeeId,
+      resource_id: resourceId,
+      organization_id: 'org-1', // Would come from context
+      enrolled_date: new Date().toISOString(),
+      status: 'enrolled',
+      progress_percentage: 0,
+      time_spent_hours: 0,
+      would_recommend: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    setEnrollments(prev => [...prev, newEnrollment]);
+    onEnroll?.(employeeId, resourceId);
+  };
+
+  // Open course detail
+  const handleViewCourse = (resource: LearningResource, recommendation?: CourseRecommendation) => {
+    setSelectedCourse(resource);
+    setSelectedRecommendation(recommendation);
+    setIsCourseModalOpen(true);
+  };
 
   // Generate recommendations for selected employee
   const recommendations = useMemo(() => {
@@ -167,6 +211,7 @@ export default function LearningDashboard({
       <div className="bg-white border border-gray-200 rounded-lg p-2 flex gap-2">
         {[
           { key: 'recommended', label: 'Recommended', icon: Zap },
+          { key: 'skills', label: 'Skills Matrix', icon: TrendingUp },
           { key: 'catalog', label: 'Course Catalog', icon: BookOpen },
           { key: 'my-learning', label: 'My Learning', icon: Target },
           { key: 'team', label: 'Team Progress', icon: BarChart3 }
@@ -191,8 +236,20 @@ export default function LearningDashboard({
         <RecommendedView
           employee={selectedEmployee}
           recommendations={recommendations}
-          onViewCourse={onViewCourse}
-          onEnroll={onEnroll}
+          onViewCourse={(resource, recommendation) => handleViewCourse(resource, recommendation)}
+          onEnroll={selectedEmployee ? (resourceId) => handleEnroll(selectedEmployee.id, resourceId) : undefined}
+          enrollments={enrollments}
+        />
+      )}
+
+      {selectedView === 'skills' && selectedEmployee && (
+        <SkillsMatrix
+          employee={selectedEmployee}
+          onSkillClick={(skillName) => {
+            // When clicking a skill, filter catalog to show relevant courses
+            setSearchQuery(skillName);
+            setSelectedView('catalog');
+          }}
         />
       )}
 
@@ -201,9 +258,10 @@ export default function LearningDashboard({
           resources={filteredCatalog}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onViewCourse={onViewCourse}
-          onEnroll={onEnroll}
+          onViewCourse={(resource) => handleViewCourse(resource)}
+          onEnroll={selectedEmployee ? (resourceId) => handleEnroll(selectedEmployee.id, resourceId) : undefined}
           selectedEmployee={selectedEmployee}
+          enrollments={enrollments}
         />
       )}
 
@@ -211,7 +269,7 @@ export default function LearningDashboard({
         <MyLearningView
           employee={selectedEmployee}
           enrollments={enrollments}
-          onViewCourse={onViewCourse}
+          onViewCourse={(resource) => handleViewCourse(resource)}
         />
       )}
 
@@ -219,6 +277,25 @@ export default function LearningDashboard({
         <TeamProgressView
           employees={employees}
           enrollments={enrollments}
+        />
+      )}
+
+      {/* Course Detail Modal */}
+      {selectedCourse && (
+        <CourseDetailModal
+          course={selectedCourse}
+          recommendation={selectedRecommendation}
+          employee={selectedEmployee || undefined}
+          isOpen={isCourseModalOpen}
+          onClose={() => {
+            setIsCourseModalOpen(false);
+            setSelectedCourse(null);
+            setSelectedRecommendation(undefined);
+          }}
+          onEnroll={selectedEmployee ? () => handleEnroll(selectedEmployee.id, selectedCourse.id) : undefined}
+          isEnrolled={enrollments.some(e =>
+            e.employee_id === selectedEmployee?.id && e.resource_id === selectedCourse.id
+          )}
         />
       )}
     </div>
@@ -262,12 +339,14 @@ function RecommendedView({
   employee,
   recommendations,
   onViewCourse,
-  onEnroll
+  onEnroll,
+  enrollments
 }: {
   employee: Employee | null;
   recommendations: CourseRecommendation[];
-  onViewCourse?: (resource: LearningResource) => void;
-  onEnroll?: (employeeId: string, resourceId: string) => void;
+  onViewCourse?: (resource: LearningResource, recommendation?: CourseRecommendation) => void;
+  onEnroll?: (resourceId: string) => void;
+  enrollments: LearningEnrollment[];
 }) {
   if (!employee) {
     return (
@@ -311,8 +390,9 @@ function RecommendedView({
                 key={rec.resource.id}
                 resource={rec.resource}
                 recommendation={rec}
-                onViewCourse={onViewCourse}
-                onEnroll={() => onEnroll?.(employee.id, rec.resource.id)}
+                onViewCourse={() => onViewCourse?.(rec.resource, rec)}
+                onEnroll={() => onEnroll?.(rec.resource.id)}
+                isEnrolled={enrollments.some(e => e.resource_id === rec.resource.id && e.employee_id === employee.id)}
               />
             ))}
           </div>
@@ -332,8 +412,9 @@ function RecommendedView({
                 key={rec.resource.id}
                 resource={rec.resource}
                 recommendation={rec}
-                onViewCourse={onViewCourse}
-                onEnroll={() => onEnroll?.(employee.id, rec.resource.id)}
+                onViewCourse={() => onViewCourse?.(rec.resource, rec)}
+                onEnroll={() => onEnroll?.(rec.resource.id)}
+                isEnrolled={enrollments.some(e => e.resource_id === rec.resource.id && e.employee_id === employee.id)}
               />
             ))}
           </div>
@@ -353,8 +434,9 @@ function RecommendedView({
                 resource={rec.resource}
                 recommendation={rec}
                 compact
-                onViewCourse={onViewCourse}
-                onEnroll={() => onEnroll?.(employee.id, rec.resource.id)}
+                onViewCourse={() => onViewCourse?.(rec.resource, rec)}
+                onEnroll={() => onEnroll?.(rec.resource.id)}
+                isEnrolled={enrollments.some(e => e.resource_id === rec.resource.id && e.employee_id === employee.id)}
               />
             ))}
           </div>
@@ -370,14 +452,16 @@ function CatalogView({
   onSearchChange,
   onViewCourse,
   onEnroll,
-  selectedEmployee
+  selectedEmployee,
+  enrollments
 }: {
   resources: LearningResource[];
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onViewCourse?: (resource: LearningResource) => void;
-  onEnroll?: (employeeId: string, resourceId: string) => void;
+  onEnroll?: (resourceId: string) => void;
   selectedEmployee: Employee | null;
+  enrollments: LearningEnrollment[];
 }) {
   return (
     <div className="space-y-6">
@@ -407,8 +491,11 @@ function CatalogView({
           <CourseCard
             key={resource.id}
             resource={resource}
-            onViewCourse={onViewCourse}
-            onEnroll={selectedEmployee ? () => onEnroll?.(selectedEmployee.id, resource.id) : undefined}
+            onViewCourse={() => onViewCourse?.(resource)}
+            onEnroll={() => onEnroll?.(resource.id)}
+            isEnrolled={selectedEmployee ? enrollments.some(e =>
+              e.employee_id === selectedEmployee.id && e.resource_id === resource.id
+            ) : false}
           />
         ))}
       </div>
@@ -427,13 +514,15 @@ function CourseCard({
   recommendation,
   compact,
   onViewCourse,
-  onEnroll
+  onEnroll,
+  isEnrolled
 }: {
   resource: LearningResource;
   recommendation?: CourseRecommendation;
   compact?: boolean;
   onViewCourse?: (resource: LearningResource) => void;
   onEnroll?: () => void;
+  isEnrolled?: boolean;
 }) {
   const priorityColors = {
     high: 'bg-red-100 text-red-700 border-red-200',
@@ -521,9 +610,21 @@ function CourseCard({
         {onEnroll && (
           <button
             onClick={onEnroll}
-            className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            disabled={isEnrolled}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
+              isEnrolled
+                ? 'bg-green-100 text-green-700 border border-green-300 cursor-not-allowed'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
           >
-            Enroll
+            {isEnrolled ? (
+              <span className="flex items-center justify-center gap-1">
+                <CheckCircle2 className="w-4 h-4" />
+                Enrolled
+              </span>
+            ) : (
+              'Enroll'
+            )}
           </button>
         )}
       </div>
@@ -567,51 +668,65 @@ function MyLearningView({
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Learning Progress</h2>
         <div className="space-y-4">
-          {employeeEnrollments.map(enrollment => (
-            <div key={enrollment.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">Course Title</h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Enrolled {new Date(enrollment.enrolled_date).toLocaleDateString()}
-                  </p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  enrollment.status === 'completed' ? 'bg-green-100 text-green-700' :
-                  enrollment.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                  'bg-gray-100 text-gray-700'
-                }`}>
-                  {enrollment.status.replace('_', ' ').toUpperCase()}
-                </span>
-              </div>
+          {employeeEnrollments.map(enrollment => {
+            // Find the course details from library
+            const course = SAMPLE_LEARNING_LIBRARY.find(r => r.id === enrollment.resource_id);
 
-              {/* Progress bar */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-gray-600">Progress</span>
-                  <span className="text-sm font-medium text-gray-900">
-                    {enrollment.progress_percentage}%
+            return (
+              <div key={enrollment.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => course && onViewCourse?.(course)}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900">{course?.title || 'Unknown Course'}</h3>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                      <span className="px-2 py-0.5 bg-gray-100 rounded">
+                        {course?.provider.replace('_', ' ').toUpperCase()}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {course?.duration_hours}h
+                      </span>
+                      <span>Enrolled {new Date(enrollment.enrolled_date).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    enrollment.status === 'completed' ? 'bg-green-100 text-green-700' :
+                    enrollment.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {enrollment.status.replace('_', ' ').toUpperCase()}
                   </span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all"
-                    style={{ width: `${enrollment.progress_percentage}%` }}
-                  />
+
+                {/* Progress bar */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-gray-600">Progress</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {enrollment.progress_percentage}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      style={{ width: `${enrollment.progress_percentage}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">{enrollment.time_spent_hours} hours invested</span>
+                  {enrollment.completed_date && (
+                    <span className="flex items-center gap-1 text-green-600">
+                      <Award className="w-4 h-4" />
+                      Completed {new Date(enrollment.completed_date).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
               </div>
-
-              <div className="flex items-center justify-between text-sm text-gray-600">
-                <span>{enrollment.time_spent_hours} hours invested</span>
-                {enrollment.completed_date && (
-                  <span className="flex items-center gap-1 text-green-600">
-                    <Award className="w-4 h-4" />
-                    Completed {new Date(enrollment.completed_date).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
